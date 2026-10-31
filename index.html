@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FRIDAY</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FRIDAY">
+<meta name="theme-color" content="#04070b">
+<meta name="description" content="FRIDAY, l'AI personale di Matteo.">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* Layout: one dark screen, the reactor in the middle, four quiet corners, nothing else. */
+:root {
+  color-scheme: dark;
+  --bg: #04070b;          /* night glass */
+  --bg-2: #0a1118;
+  --ink: #e8f0f4;
+  --dim: #6f8190;
+  --faint: #2a3a47;
+  --amber: #ffad33;       /* reactor core, FRIDAY's voice */
+  --amber-soft: rgba(255, 173, 51, .16);
+  --cyan: #61e2ff;        /* listening */
+  --red: #ff5a4f;         /* scan, alert */
+  --f-display: "Chakra Petch", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html, body { height: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-display);
+  overflow: hidden; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+}
+#app {
+  position: relative; height: 100%; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+  background: radial-gradient(120% 70% at 50% 42%, var(--bg-2) 0%, var(--bg) 62%);
+}
+#reactor { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.scan-lines { position: absolute; inset: 0; pointer-events: none; opacity: .35;
+  background: repeating-linear-gradient(180deg, rgba(255,255,255,.025) 0 1px, transparent 1px 4px); }
+
+/* corners */
+.corner { position: absolute; display: grid; gap: 4px; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--dim); transition: opacity .8s ease, transform .8s ease; }
+.boot .corner { opacity: 0; }
+.tl { top: calc(12px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); transform: translate(0,0); }
+.tr { top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); text-align: right; justify-items: end; }
+.bl { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); }
+.br { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
+.boot .tl { transform: translate(-12px, -12px); } .boot .tr { transform: translate(12px, -12px); }
+.boot .bl { transform: translate(-12px, 12px); } .boot .br { transform: translate(12px, 12px); }
+.clock { font-family: var(--f-display); font-size: 26px; font-weight: 600; letter-spacing: .06em; color: var(--ink); line-height: 1;
+  font-variant-numeric: tabular-nums; }
+.row { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 1px rgba(255,255,255,.05); }
+.dot.ok { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.dot.live { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.num { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* corner buttons */
+.cbtn { width: 58px; height: 58px; border-radius: 50%; border: 1px solid rgba(255,173,51,.35); background: rgba(10,17,24,.72);
+  display: grid; place-items: center; color: var(--amber); padding: 0; cursor: pointer; position: relative;
+  box-shadow: inset 0 0 18px rgba(255,173,51,.08); }
+.cbtn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.cbtn:active { transform: scale(.94); }
+.cbtn svg { width: 24px; height: 24px; }
+.bars { display: flex; gap: 3px; align-items: center; height: 24px; }
+.bars i { width: 3px; height: 6px; border-radius: 2px; background: currentColor; transition: height .09s linear; }
+.cbtn.on { color: var(--cyan); border-color: rgba(97,226,255,.6); box-shadow: 0 0 22px rgba(97,226,255,.25), inset 0 0 18px rgba(97,226,255,.12); }
+.cbtn.call { animation: callme 1.1s ease-in-out infinite; }
+@keyframes callme { 50% { box-shadow: 0 0 0 10px rgba(255,90,79,.0), 0 0 26px rgba(255,90,79,.55); border-color: var(--red); color: var(--red); } }
+.clabel { font-size: 9.5px; letter-spacing: .18em; }
+.file-hit { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border-radius: 50%; }
+
+/* center: state + subtitles */
+.center-ui { position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; display: grid; }
+#state { position: absolute; left: 50%; transform: translateX(-50%); font-family: var(--f-mono); font-size: 10.5px;
+  letter-spacing: .32em; color: var(--amber); text-transform: uppercase; white-space: nowrap; transition: color .3s; }
+#subs { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  text-align: center; display: grid; gap: 8px; justify-items: center; }
+#youSaid { font-family: var(--f-mono); font-size: 12px; color: var(--dim); max-width: 34ch; text-wrap: balance; min-height: 1em; }
+#said { font-size: 19px; line-height: 1.35; font-weight: 500; max-width: 26ch; text-wrap: balance; min-height: 2.7em;
+  text-shadow: 0 0 18px rgba(255,173,51,.18); }
+#said .cur { display: inline-block; width: .45em; height: .95em; margin-left: 3px; vertical-align: -.1em; background: var(--amber);
+  animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+.menu-btn { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: none; border: 1px solid var(--faint); color: var(--dim); font: 500 10.5px var(--f-mono); letter-spacing: .26em;
+  padding: 9px 14px; border-radius: 999px; cursor: pointer; transition: opacity .8s; }
+.menu-btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.boot .menu-btn, .boot #state, .boot #subs { opacity: 0; }
+
+/* boot */
+#bootLayer { position: absolute; inset: 0; display: grid; place-items: center; z-index: 5; }
+#bootLayer[hidden] { display: none !important; }
+#tapStart { pointer-events: auto; background: none; border: 0; color: var(--ink); cursor: pointer; display: grid; gap: 14px;
+  justify-items: center; font-family: var(--f-display); padding: 40px; }
+#tapStart .name { font-size: 34px; font-weight: 700; letter-spacing: .42em; padding-left: .42em; }
+#tapStart .hint { font: 500 11px var(--f-mono); letter-spacing: .3em; color: var(--amber); animation: breathe 2.2s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35; } }
+#bootLog { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  font: 11px/1.7 var(--f-mono); color: var(--dim); letter-spacing: .08em; white-space: pre; }
+#bootLog b { color: var(--amber); font-weight: 500; }
+#bootTitle { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; font-size: 22px; letter-spacing: .5em;
+  padding-left: .5em; opacity: 0; transition: opacity .6s; }
+
+/* input sheet */
+#inputBar { position: fixed; left: 0; right: 0; top: 0; z-index: 20; background: rgba(6,10,15,.95); border-bottom: 1px solid rgba(97,226,255,.3);
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));
+  animation: drop .28s cubic-bezier(.2,.8,.2,1);
+  display: grid; gap: 6px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+#inputBar form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+#say { min-width: 0; width: 100%; font: 17px var(--f-display); color: var(--ink); background: var(--bg); border: 1px solid rgba(97,226,255,.45);
+  border-radius: 12px; padding: 12px 14px; -webkit-user-select: text; user-select: text; }
+#say:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(97,226,255,.15); }
+.pill { font: 600 13px var(--f-display); letter-spacing: .12em; text-transform: uppercase; border-radius: 12px; padding: 12px 14px;
+  border: 1px solid var(--faint); background: transparent; color: var(--dim); cursor: pointer; }
+.pill.go { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.pill:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.ihint { font: 10.5px var(--f-mono); color: var(--dim); letter-spacing: .06em; display: flex; justify-content: space-between; gap: 8px; }
+.ihint label { display: flex; gap: 6px; align-items: center; }
+
+/* sheets: menu, card, qr */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 82%; overflow: auto; background: rgba(7,12,18,.97);
+  border-top: 1px solid rgba(255,173,51,.3); border-radius: 18px 18px 0 0;
+  padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 14px; animation: rise .32s cubic-bezier(.2,.8,.2,1); -webkit-user-select: text; user-select: text; }
+@keyframes rise { from { transform: translateY(30px); opacity: 0; } }
+@keyframes drop { from { transform: translateY(-24px); opacity: 0; } }
+.sheet h2 { margin: 0; font-size: 13px; letter-spacing: .3em; color: var(--amber); font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.act { text-align: left; background: var(--bg-2); border: 1px solid var(--faint); color: var(--ink); border-radius: 12px; padding: 12px;
+  font: 600 14px var(--f-display); cursor: pointer; display: grid; gap: 3px; min-width: 0; }
+.act small { font: 11px var(--f-mono); color: var(--dim); font-weight: 400; }
+.act:focus-visible { outline: 2px solid var(--cyan); }
+.field { display: grid; gap: 4px; font: 11px var(--f-mono); color: var(--dim); letter-spacing: .08em; }
+.field input, .field select { font: 15px var(--f-display); color: var(--ink); background: var(--bg); border: 1px solid var(--faint);
+  border-radius: 10px; padding: 10px 12px; min-width: 0; width: 100%; box-sizing: border-box; }
+.close-x { justify-self: end; }
+.backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.45); }
+
+/* result card (scan, email, agenda) */
+#card { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  z-index: 12; border: 1px solid rgba(255,173,51,.35); background: rgba(6,10,15,.88); border-radius: 14px; padding: 14px;
+  display: grid; gap: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: rise .35s ease; max-height: 46%; overflow: auto; }
+#card .ctitle { font: 600 12px var(--f-mono); letter-spacing: .26em; color: var(--amber); text-transform: uppercase; display: flex; justify-content: space-between; gap: 8px; }
+#card .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 14px; }
+#card .kv dt { font: 11px var(--f-mono); color: var(--dim); letter-spacing: .1em; text-transform: uppercase; padding-top: 2px; }
+#card .kv dd { margin: 0; overflow-wrap: anywhere; }
+#card img.shot { width: 100%; max-height: 140px; object-fit: cover; border-radius: 10px; filter: saturate(.7) contrast(1.05); }
+#card .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+#card pre { margin: 0; white-space: pre-wrap; font: 13px/1.45 var(--f-display); color: var(--ink); }
+.qr-wrap { display: grid; justify-items: center; gap: 12px; text-align: center; }
+#qrBox { background: #fff; padding: 14px; border-radius: 14px; }
+#qrBox img, #qrBox canvas { display: block; width: 220px; height: 220px; }
+.qr-cap { font-size: 15px; max-width: 30ch; }
+#toast { position: absolute; top: calc(70px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40;
+  background: rgba(6,10,15,.94); border: 1px solid var(--faint); border-radius: 10px; padding: 8px 12px; font: 12px var(--f-mono);
+  color: var(--ink); max-width: 86%; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+/* live camera with FRIDAY's sight */
+#cam { position: fixed; inset: 0; z-index: 35; background: #000; }
+#camVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#camHud { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cam-bar { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(22px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(0deg, rgba(0,0,0,.7), transparent); }
+.cam-bar .pill { justify-self: start; background: rgba(0,0,0,.5); color: var(--ink); }
+.shutter { width: 76px; height: 76px; border-radius: 50%; border: 3px solid var(--amber); background: rgba(255,173,51,.18); cursor: pointer;
+  box-shadow: 0 0 24px rgba(255,173,51,.45); }
+.shutter:active { transform: scale(.94); background: rgba(255,173,51,.4); }
+.shutter:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+.note { margin: 0; font: 12.5px/1.5 var(--f-mono); color: var(--dim); }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.grid3 .act { padding: 10px; font-size: 13px; }
+
+/* asleep: the screen goes quiet, only the clock and the small reactor in the corner */
+.corner, .menu-btn, #subs, #state { transition: opacity .9s ease, transform .9s ease; }
+.asleep .tr, .asleep .br, .asleep .menu-btn, .asleep #subs { opacity: 0; pointer-events: none; }
+.asleep .tl { opacity: .55; }
+.asleep #state { opacity: .8; top: auto !important; bottom: calc(30px + env(safe-area-inset-bottom, 0px)); left: 96px; transform: none; color: var(--dim); }
+.asleep .bl .clabel { opacity: 0; }
+.asleep .bl .cbtn { border-color: transparent; background: transparent; box-shadow: none; }
+
+/* windows */
+#winLayer { position: absolute; inset: 0; pointer-events: none; z-index: 14; }
+.win { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+  top: calc(96px + env(safe-area-inset-top, 0px)); max-height: 56%; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  pointer-events: auto; background: linear-gradient(180deg, rgba(14,22,30,.94), rgba(6,10,15,.94)); border: 1px solid rgba(255,173,51,.4);
+  border-radius: 4px 18px 4px 18px; box-shadow: 0 0 0 1px rgba(255,173,51,.06), 0 18px 50px rgba(0,0,0,.55), inset 0 0 30px rgba(255,173,51,.05);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  --depth: 0; transform: translateY(calc(var(--depth) * -13px)) scale(calc(1 - var(--depth) * .05));
+  transition: transform .4s cubic-bezier(.2,.9,.2,1), opacity .4s, filter .4s;
+  animation: winIn .5s cubic-bezier(.2,.9,.2,1) backwards; overflow: hidden; }
+.win.behind { filter: brightness(.55) saturate(.7); cursor: pointer; }
+.win.behind .wbody { pointer-events: none; }
+.win::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,173,51,.18), transparent) no-repeat; background-size: 40% 100%;
+  animation: sweep 1.1s ease-out .1s both; }
+.win.closing { animation: winOut .3s cubic-bezier(.6,0,.8,.2) forwards; }
+.win.flash { animation: winFlash .5s ease; }
+@keyframes winIn { 0% { opacity: 0; transform: perspective(700px) scale(.15) rotateX(55deg); filter: blur(6px); clip-path: inset(48% 0 48% 0); }
+  60% { opacity: 1; filter: none; clip-path: inset(0 0 0 0); } }
+@keyframes winOut { to { opacity: 0; transform: scale(.3) translateY(60px); filter: blur(4px); } }
+@keyframes winFlash { 30% { box-shadow: 0 0 0 2px var(--amber), 0 0 40px rgba(255,173,51,.5); } }
+@keyframes sweep { from { background-position: -60% 0; } to { background-position: 180% 0; } }
+.wbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 10px 8px 12px;
+  border-bottom: 1px solid rgba(255,173,51,.18); cursor: grab; touch-action: none; }
+.wicon { width: 26px; height: 26px; display: grid; place-items: center; color: var(--amber); border: 1px solid rgba(255,173,51,.35); border-radius: 50%; }
+.wicon svg { width: 15px; height: 15px; }
+.wtitle { display: grid; min-width: 0; }
+.wtitle span { font: 600 15px var(--f-display); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wtitle small { font: 9.5px var(--f-mono); letter-spacing: .2em; color: var(--dim); text-transform: uppercase; }
+.wclose { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--faint); background: transparent; color: var(--dim); font-size: 18px; cursor: pointer; }
+.wclose:focus-visible { outline: 2px solid var(--cyan); }
+.wbody { padding: 12px 14px 14px; overflow: auto; display: grid; gap: 12px; -webkit-user-select: text; user-select: text; }
+.wbody .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 14px; }
+.wbody .kv dt { font: 11px var(--f-mono); color: var(--dim); letter-spacing: .1em; text-transform: uppercase; padding-top: 2px; }
+.wbody .kv dd { margin: 0; overflow-wrap: anywhere; }
+.big { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+.big b { font: 600 46px/1 var(--f-display); color: var(--amber); font-variant-numeric: tabular-nums; }
+.big b.mono-b { font: 500 17px/1.3 var(--f-mono); color: var(--amber); }
+.big span { font-size: 16px; line-height: 1.35; }
+.big small { font: 11.5px var(--f-mono); color: var(--dim); }
+.spark { width: 100%; height: 44px; color: var(--amber); display: block; }
+.hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; text-align: center; font-size: 15px; }
+.hours span { display: grid; gap: 2px; padding: 6px 0; border: 1px solid var(--faint); border-radius: 8px; }
+.hours b { font: 500 11px var(--f-mono); color: var(--dim); }
+.hours small { font: 10.5px var(--f-mono); color: var(--cyan); }
+.radar { height: 90px; border: 1px solid var(--faint); border-radius: 10px; position: relative; overflow: hidden;
+  background: repeating-linear-gradient(0deg, transparent 0 17px, rgba(255,173,51,.07) 17px 18px), repeating-linear-gradient(90deg, transparent 0 17px, rgba(255,173,51,.07) 17px 18px); }
+.radar i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+.radar i::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1px solid var(--amber); animation: ping 1.6s ease-out infinite; }
+@keyframes ping { to { transform: scale(6); opacity: 0; } }
+.wbtns { display: flex; gap: 8px; justify-content: flex-end; }
+.compass { position: relative; width: 190px; height: 190px; margin: 0 auto; border-radius: 50%; border: 1px solid rgba(255,173,51,.45);
+  display: grid; place-items: center; background: radial-gradient(circle, rgba(255,173,51,.08), transparent 70%); }
+.needle { position: absolute; inset: 14px; transition: transform .15s linear;
+  background: linear-gradient(var(--red), var(--red)) 50% 0 / 3px 50% no-repeat, linear-gradient(var(--dim), var(--dim)) 50% 100% / 3px 50% no-repeat; }
+.compass b { position: relative; font: 500 15px var(--f-mono); background: var(--bg); padding: 4px 8px; border-radius: 6px; }
+.tring { position: relative; width: 170px; height: 170px; margin: 0 auto; display: grid; place-items: center; }
+.tring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.tbg { fill: none; stroke: var(--faint); stroke-width: 3; }
+.tfg { fill: none; stroke: var(--amber); stroke-width: 4; stroke-dasharray: 100; stroke-dashoffset: 0; stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+.tleft { font: 600 34px var(--f-display); font-variant-numeric: tabular-nums; }
+.nlist, .slist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.nlist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; border-bottom: 1px solid var(--faint); padding-bottom: 8px; }
+.nlist span, .slist li { display: grid; gap: 2px; font-size: 15px; overflow-wrap: anywhere; }
+.nlist small, .slist small { font: 10.5px var(--f-mono); color: var(--dim); }
+.slist a { color: var(--ink); text-decoration-color: var(--amber); }
+.huge { margin: 0; font: 600 30px/1.2 var(--f-display); text-wrap: balance; text-align: center; padding: 6px 0; }
+.gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font: 10.5px var(--f-mono); color: var(--dim); text-align: center; letter-spacing: .1em; text-transform: uppercase; }
+.gauges span { display: grid; gap: 6px; justify-items: center; }
+.gauges i { width: 54px; height: 54px; border-radius: 50%; background: conic-gradient(var(--amber) calc(var(--v) * 1%), var(--faint) 0);
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%); mask: radial-gradient(circle, transparent 58%, #000 60%); }
+
+</style>
+</head>
+<body>
+<div id="app" class="boot">
+  <canvas id="reactor" aria-hidden="true"></canvas>
+  <div class="scan-lines" aria-hidden="true"></div>
+
+  <div class="corner tl" aria-live="off">
+    <div class="clock" id="clock">--:--</div>
+    <div id="date">—</div>
+    <div class="row"><span class="dot ok" id="dotSys"></span><span id="sysLine">Sistemi</span></div>
+  </div>
+  <div class="corner tr">
+    <div class="row"><span>Rete</span><span class="dot" id="dotNet"></span></div>
+    <div class="row"><span>Cervello</span><span class="dot" id="dotBrain"></span></div>
+    <div class="row"><span>Risposta</span><span class="num" id="lat">—</span></div>
+    <div class="row"><span>Sessione</span><span class="num" id="up">00:00</span></div>
+  </div>
+
+  <div class="center-ui" aria-live="polite">
+    <div id="state">In attesa</div>
+    <div id="subs">
+      <div id="youSaid"></div>
+      <div id="said"></div>
+    </div>
+  </div>
+
+  <div class="corner bl">
+    <button type="button" class="cbtn" id="micBtn" aria-label="Parla con FRIDAY">
+      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+    </button>
+    <span class="clabel" id="micLabel">Parla</span>
+  </div>
+  <div class="corner br">
+    <button type="button" class="cbtn" id="scanBtn" aria-label="Scansione con la fotocamera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/><circle cx="12" cy="12" r="3.2"/><path d="M12 6.5v1.6M12 15.9v1.6M6.5 12h1.6M15.9 12h1.6"/></svg>
+    </button>
+    <input type="file" id="shot" accept="image/*" capture="environment" hidden>
+    <span class="clabel">Scansiona</span>
+  </div>
+  <button type="button" class="menu-btn" id="menuBtn">Protocolli</button>
+
+  <div id="bootLayer">
+    <button type="button" id="tapStart" aria-label="Attiva FRIDAY">
+      <span class="name">FRIDAY</span>
+      <span class="hint">Tocca per attivare</span>
+    </button>
+    <div id="bootTitle">F.R.I.D.A.Y.</div>
+    <div id="bootLog" aria-hidden="true"></div>
+  </div>
+
+  <div id="winLayer"></div>
+  <div id="card" hidden></div>
+  <div id="toast" hidden></div>
+</div>
+
+<div id="inputBar" hidden>
+  <form id="sayForm" autocomplete="off">
+    <input id="say" type="text" enterkeyhint="send" placeholder="Scrivi a FRIDAY" aria-label="Messaggio per FRIDAY">
+    <button type="submit" class="pill go" id="sendBtn">Invia</button>
+    <button type="button" class="pill" id="closeInput" aria-label="Chiudi">×</button>
+  </form>
+  <div class="ihint"><span>Anche la dettatura della tastiera funziona</span>
+    <label><input type="checkbox" id="autoSend" checked> invio da sola</label></div>
+</div>
+
+<div id="cam" hidden>
+  <video id="camVideo" playsinline muted autoplay></video>
+  <canvas id="camHud" aria-hidden="true"></canvas>
+  <div class="cam-bar"><button type="button" class="pill" id="camClose">Annulla</button>
+    <button type="button" class="shutter" id="camShot" aria-label="Scatta e analizza"></button><span></span></div>
+</div>
+
+<div id="sheetHost"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const app = $("app");
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("friday." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("friday." + k, JSON.stringify(v)); } catch (e) { /* storage off */ } },
+};
+const S = {
+  phase: "boot", level: 0, target: 0, booted: false, t0: Date.now(), busy: false, ctl: null,
+  turns: store.get("turns", []), voice: null, typing: 0, sleeping: false, wakeListening: false, wakeBlocked: false,
+  calls: 0, sources: [], afterSpeech: null, tx: 0, ty: 0, txT: 0, tyT: 0,
+  contact: store.get("contact", { name: "Matteo", org: "On-Line", email: "matteo@gordiacut.com", phone: "", social: "" }),
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ------------------------------------------------------------------ sound (synthesized, no files) */
+let ac = null, master = null;
+function audio() {
+  if (!ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    ac = new AC(); master = ac.createGain(); master.gain.value = 0.32; master.connect(ac.destination);
+  }
+  if (ac.state === "suspended") ac.resume();
+  return ac;
+}
+function tone(freq, dur, { type = "sine", gain = 0.5, at = 0, to = null, attack = 0.01 } = {}) {
+  const c = audio(); if (!c) return;
+  const t = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+}
+function noise(dur, { at = 0, from = 400, to = 3000, gain = 0.25 } = {}) {
+  const c = audio(); if (!c) return;
+  const t = c.currentTime + at, len = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, len, c.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
+  src.buffer = buf; bp.type = "bandpass"; bp.Q.value = 6;
+  bp.frequency.setValueAtTime(from, t); bp.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(master); src.start(t);
+}
+const sfx = {
+  boot() { tone(55, 1.6, { type: "sawtooth", gain: 0.18, to: 880, attack: 0.3 }); noise(1.4, { from: 200, to: 4000, gain: 0.12 });
+    [523.25, 783.99, 1046.5].forEach((f, i) => tone(f, 1.6, { gain: 0.16, at: 1.55 + i * 0.07, attack: 0.02 })); },
+  tap() { tone(1500, 0.05, { type: "triangle", gain: 0.18 }); },
+  listen() { tone(660, 0.09, { gain: 0.2 }); tone(990, 0.12, { gain: 0.2, at: 0.08 }); },
+  think() { tone(140, 0.35, { type: "sine", gain: 0.22, to: 180, attack: 0.08 }); },
+  reply() { tone(1174.66, 0.18, { gain: 0.1 }); tone(1760, 0.22, { gain: 0.08, at: 0.06 }); },
+  send() { noise(0.25, { from: 2500, to: 600, gain: 0.12 }); },
+  scan() { noise(1.1, { from: 300, to: 5000, gain: 0.16 }); tone(880, 0.06, { gain: 0.12, at: 1.1 }); tone(1320, 0.1, { gain: 0.12, at: 1.18 }); },
+  qr() { [880, 1108.73, 1318.51, 1760].forEach((f, i) => tone(f, 0.16, { gain: 0.12, at: i * 0.06 })); },
+  error() { tone(150, 0.16, { type: "square", gain: 0.12 }); tone(110, 0.22, { type: "square", gain: 0.12, at: 0.18 }); },
+  open() { tone(520, 0.12, { type: "triangle", gain: 0.12, to: 1040 }); noise(0.18, { from: 800, to: 3200, gain: 0.06 }); },
+  close() { tone(900, 0.14, { type: "triangle", gain: 0.1, to: 380 }); },
+  sleep() { tone(660, 0.9, { gain: 0.14, to: 160, attack: 0.05 }); noise(1.2, { from: 3000, to: 200, gain: 0.08 }); },
+  wake() { tone(180, 0.7, { type: "sawtooth", gain: 0.1, to: 720, attack: 0.1 }); [659.25, 987.77].forEach((f, i) => tone(f, 0.5, { gain: 0.12, at: 0.55 + i * 0.08 })); },
+  alarm() { [0, 0.35, 0.7, 1.05].forEach((at) => { tone(1318.5, 0.16, { type: "square", gain: 0.12, at }); tone(1760, 0.16, { type: "square", gain: 0.1, at: at + 0.16 }); }); },
+  scanSoft() { noise(0.5, { from: 600, to: 2400, gain: 0.06 }); },
+};
+
+/* ------------------------------------------------------------------ reactor (canvas, pseudo-3D) */
+// Every ring is a circle in 3D. Awake (asm = 1) they sit flat and centred; asleep (asm = 0) they come
+// apart, tumble slowly, and the whole reactor drifts to the bottom-left corner looking down.
+const cv = $("reactor"), cx2 = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1, CX = 0, CY = 0, R = 0;
+function layout() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  CX = W / 2; CY = H * 0.4; R = Math.min(W * 0.33, H * 0.2, 190);
+  $("state").style.top = (CY + R * 1.28 + 6) + "px";
+  $("subs").style.top = (CY + R * 1.28 + 30) + "px";
+  $("bootTitle").style.top = (CY + R * 1.32) + "px";
+  $("card").style.top = (CY - R * 1.2) + "px";
+}
+const COLORS = { idle: [255, 173, 51], listen: [97, 226, 255], think: [255, 173, 51], speak: [255, 173, 51], scan: [255, 90, 79],
+  error: [255, 90, 79], sleep: [255, 150, 40] };
+let col = [255, 173, 51], bootT = -1, asm = 0, lastNow = 0;
+const BARS = Array.from(document.querySelectorAll("#micBtn .bars i"));
+// ring layout and how each one flies apart when FRIDAY sleeps
+const PARTS = {
+  ticks: { rx: 1.1, ry: -0.5, z: 1.4 }, segs: { rx: -0.7, ry: 0.9, z: 0.7 }, thin: { rx: 0.5, ry: 1.2, z: 0.25 },
+  coils: { rx: -1.2, ry: -0.6, z: -0.35 }, edge: { rx: -1.2, ry: -0.6, z: -0.2 }, inner: { rx: 0.9, ry: -1.1, z: -0.9 },
+};
+let V = { ox: 0, oy: 0, sc: 1, gx: 0, gy: 0, t: 0, s: 1 };  // view for this frame
+function xf(part) {
+  const k = 1 - asm, p = PARTS[part], tum = V.t * 0.35;
+  return { ax: p.rx * k * 1.15 + Math.sin(tum + p.z * 3) * 0.25 * k, ay: p.ry * k * 1.15 + Math.cos(tum * 0.8 + p.rx) * 0.25 * k,
+    z: p.z * k * R * 1.1 };
+}
+function proj(x, y, T) {
+  // ring's own tilt
+  let cy = Math.cos(T.ax), sy = Math.sin(T.ax), y1 = y * cy, z1 = y * sy;
+  let cyy = Math.cos(T.ay), syy = Math.sin(T.ay), x2 = x * cyy + z1 * syy, z2 = -x * syy + z1 * cyy;
+  z2 += T.z;
+  // whole reactor looking down-left while asleep
+  const cgx = Math.cos(V.gx), sgx = Math.sin(V.gx), y3 = y1 * cgx - z2 * sgx, z3 = y1 * sgx + z2 * cgx;
+  const cgy = Math.cos(V.gy), sgy = Math.sin(V.gy), x4 = x2 * cgy + z3 * sgy, z4 = -x2 * sgy + z3 * cgy;
+  const f = 700, s = f / (f + z4);
+  return [V.ox + x4 * s * V.sc, V.oy + y3 * s * V.sc, s];
+}
+function arc3(part, r, a0, a1, w, alpha) {
+  const T = xf(part), n = Math.max(6, Math.ceil(Math.abs(a1 - a0) / (Math.PI * 2) * 72));
+  cx2.beginPath(); let ss = 0;
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + (a1 - a0) * (i / n), [x, y, s] = proj(Math.cos(a) * r, Math.sin(a) * r, T);
+    i ? cx2.lineTo(x, y) : cx2.moveTo(x, y); ss += s;
+  }
+  cx2.lineWidth = Math.max(0.6, w * V.sc * (ss / (n + 1)));
+  cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${alpha})`; cx2.stroke();
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - (lastNow || now)) / 1000); lastNow = now;
+  const t = now / 1000; V.t = t;
+  const want = COLORS[S.phase] || COLORS.idle;
+  col = col.map((v, i) => v + (want[i] - v) * 0.08);
+  // assembly: boot builds it, sleep takes it apart
+  const bp = bootT < 0 ? (S.booted ? 1 : 0) : Math.min(1, (now - bootT) / 2600);
+  const asmTarget = S.sleeping ? 0 : (S.booted || bootT >= 0 ? 1 : 0.0001);
+  asm += (asmTarget - asm) * Math.min(1, dt * (S.sleeping ? 1.4 : 2.6));
+  if (!S.booted && bootT < 0) asm = 1;   // the tap screen shows the reactor dimly assembled
+  // level: speech envelope or ambient breathing
+  if (S.phase === "speak") S.target = Math.max(S.target * 0.93, 0.25 + 0.2 * Math.sin(t * 9) * Math.sin(t * 3.7));
+  else if (S.phase === "listen") S.target = 0.18 + Math.min(0.6, S.typing) + 0.05 * Math.sin(t * 4);
+  else if (S.phase === "think") S.target = 0.3 + 0.15 * Math.sin(t * 6);
+  else if (S.sleeping) S.target = 0.08 + 0.06 * Math.sin(t * 1.1);
+  else S.target = 0.12 + 0.05 * Math.sin(t * 1.4);
+  S.typing *= 0.9;
+  S.level += (S.target - S.level) * 0.18;
+  const L = S.level, k = 1 - asm;
+  // where the reactor sits: centre when awake, bottom-left corner when asleep
+  const sx = 64 + (window.visualViewport ? 0 : 0), sy = H - 150;
+  V.ox = CX + (sx - CX) * k; V.oy = CY + (sy - CY) * k;
+  S.tx += ((S.txT || 0) - S.tx) * 0.08; S.ty += ((S.tyT || 0) - S.ty) * 0.08;   // the phone's tilt moves the hologram
+  V.sc = 1 - 0.62 * k; V.gx = 0.55 * k + S.tx; V.gy = -0.7 * k + S.ty;
+  cx2.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx2.clearRect(0, 0, W, H);
+  const stage = (a, b) => Math.max(0, Math.min(1, (bp - a) / (b - a)));
+  const ease = (x) => 1 - Math.pow(1 - x, 3);
+  const spin = S.phase === "think" ? 2.6 : S.phase === "scan" ? 3.4 : S.sleeping ? 0.4 : 1;
+  const dim = S.booted || bootT >= 0 ? 1 : 0.25;
+  // halo
+  const hr = R * 1.9 * V.sc;
+  const g = cx2.createRadialGradient(V.ox, V.oy, R * 0.1 * V.sc, V.ox, V.oy, hr);
+  g.addColorStop(0, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${(0.12 + L * 0.25 * stage(0.55, 0.8)) * dim})`);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  cx2.fillStyle = g; cx2.fillRect(0, 0, W, H);
+  cx2.globalAlpha = dim;
+  // 1. outer tick ring
+  const s1 = ease(stage(0, 0.35));
+  if (s1 > 0) {
+    const n = 96, rot = t * 0.05 * spin, T = xf("ticks");
+    for (let i = 0; i < n * s1; i++) {
+      const a = rot + (i / n) * Math.PI * 2, long = i % 8 === 0, r0 = R * 1.18, r1 = R * (long ? 1.27 : 1.22);
+      const [x0, y0] = proj(Math.cos(a) * r0, Math.sin(a) * r0, T), [x1, y1] = proj(Math.cos(a) * r1, Math.sin(a) * r1, T);
+      cx2.beginPath(); cx2.moveTo(x0, y0); cx2.lineTo(x1, y1);
+      cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${long ? 0.7 : 0.28})`; cx2.lineWidth = long ? 1.6 : 1; cx2.stroke();
+    }
+  }
+  // 2. segmented ring, counter-rotating
+  const s2 = ease(stage(0.18, 0.55));
+  if (s2 > 0) {
+    const segs = 6, rot = -t * 0.22 * spin;
+    for (let i = 0; i < segs; i++) {
+      const a0 = rot + (i / segs) * Math.PI * 2, span = (Math.PI * 2 / segs) * 0.72 * s2;
+      arc3("segs", R * 1.05, a0, a0 + span, 3, 0.55 + L * 0.4);
+    }
+    arc3("thin", R * 0.98, 0, Math.PI * 2 * s2, 1, 0.25);
+  }
+  // 3. reactor coils
+  const s3 = ease(stage(0.38, 0.75));
+  if (s3 > 0) {
+    const coils = 10, rot = t * 0.12 * spin;
+    for (let i = 0; i < coils; i++) {
+      const a = rot + (i / coils) * Math.PI * 2, span = (Math.PI * 2 / coils) * 0.62;
+      arc3("coils", R * 0.72, a, a + span * s3, R * 0.16, 0.16 + L * 0.35);
+      arc3("edge", R * 0.82, a, a + span * s3, 1.2, 0.6);
+    }
+    arc3("inner", R * 0.6, 0, Math.PI * 2 * s3, 1.4, 0.55);
+  }
+  // 4. core
+  const s4 = ease(stage(0.6, 1));
+  if (s4 > 0) {
+    const cr = R * V.sc * (0.36 + L * 0.12) * s4 * (1 - 0.25 * k);
+    const cg = cx2.createRadialGradient(V.ox, V.oy, 0, V.ox, V.oy, cr * 1.6);
+    cg.addColorStop(0, `rgba(255,255,255,${0.9 * s4 * (1 - 0.4 * k)})`);
+    cg.addColorStop(0.35, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${0.85 * s4})`);
+    cg.addColorStop(1, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},0)`);
+    cx2.fillStyle = cg; cx2.beginPath(); cx2.arc(V.ox, V.oy, cr * 1.6, 0, Math.PI * 2); cx2.fill();
+    cx2.beginPath(); cx2.arc(V.ox, V.oy, cr, 0, Math.PI * 2); cx2.lineWidth = 2;
+    cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},.9)`; cx2.stroke();
+  }
+  // thinking: orbiting sparks; scan: sweep
+  if (S.phase === "think" && !S.sleeping) {
+    for (let i = 0; i < 3; i++) {
+      const a = t * 2.4 + i * 2.094, r = R * 0.92 * V.sc;
+      cx2.beginPath(); cx2.arc(V.ox + Math.cos(a) * r, V.oy + Math.sin(a) * r, 3, 0, Math.PI * 2);
+      cx2.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},.95)`; cx2.fill();
+    }
+  }
+  if (S.phase === "scan" && cx2.createConicGradient && !S.sleeping) {
+    const sw = cx2.createConicGradient(t * 3, V.ox, V.oy);
+    sw.addColorStop(0, "rgba(255,90,79,.35)"); sw.addColorStop(0.12, "rgba(255,90,79,0)"); sw.addColorStop(1, "rgba(255,90,79,0)");
+    cx2.fillStyle = sw; cx2.beginPath(); cx2.arc(V.ox, V.oy, R * 1.3 * V.sc, 0, Math.PI * 2); cx2.fill();
+  }
+  // speaking / listening: waveform ring
+  if ((S.phase === "speak" || S.phase === "listen") && !S.sleeping) {
+    cx2.beginPath();
+    const n = 90;
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const wob = 1 + L * 0.06 * Math.sin(a * 7 + t * 9) + L * 0.04 * Math.sin(a * 13 - t * 6);
+      const r = R * 1.33 * wob * V.sc;
+      const x = V.ox + Math.cos(a) * r, y = V.oy + Math.sin(a) * r;
+      i ? cx2.lineTo(x, y) : cx2.moveTo(x, y);
+    }
+    cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${0.25 + L * 0.4})`; cx2.lineWidth = 1.2; cx2.stroke();
+  }
+  cx2.globalAlpha = 1;
+  // mic bars: what FRIDAY hears
+  const ear = S.phase === "listen" ? L : S.phase === "speak" ? L * 0.6 : S.wakeListening ? 0.12 + 0.08 * Math.sin(t * 2) : 0.05;
+  BARS.forEach((b, i) => { b.style.height = (5 + Math.abs(Math.sin(t * 7 + i * 1.3)) * 18 * ear + ear * 6) + "px"; });
+}
+
+/* ------------------------------------------------------------------ status & corners */
+const STATE_LABEL = { idle: "In attesa", listen: "Ti ascolto", think: "Elaboro", speak: "FRIDAY", scan: "Scansione", error: "Errore", sleep: "In riposo" };
+function setPhase(p, label) {
+  S.phase = p; $("state").textContent = label || (p === "idle" && S.wakeListening ? "Dì «Friday»" : STATE_LABEL[p] || p);
+}
+const DAYS = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"], MONTHS = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+function tick() {
+  const d = new Date();
+  $("clock").textContent = d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  $("date").textContent = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const up = Math.floor((Date.now() - S.t0) / 1000);
+  $("up").textContent = `${String(Math.floor(up / 60)).padStart(2, "0")}:${String(up % 60).padStart(2, "0")}`;
+  $("dotNet").className = "dot " + (navigator.onLine ? "ok" : "bad");
+}
+function brainDot(state) { $("dotBrain").className = "dot " + (state === "ok" ? "ok" : state === "live" ? "live" : state === "bad" ? "bad" : ""); }
+let toastT = null;
+function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 3800); }
+
+/* ------------------------------------------------------------------ voice out, with the words appearing as she says them */
+function voices() { return window.speechSynthesis ? speechSynthesis.getVoices().filter((v) => /^it/i.test(v.lang)) : []; }
+function pickVoice() {
+  const it = voices(), saved = store.get("voice", "");
+  let v = it.find((x) => x.name === saved) || null;
+  if (!v) {
+    const rank = (x) => (/premium/i.test(x.name) ? 0 : /enhanced|migliorat/i.test(x.name) ? 1 : 2) * 10
+      + (/federica|alice|emma|paola|elsa|isabella/i.test(x.name) ? 0 : /luca|diego|cosimo/i.test(x.name) ? 4 : 2);
+    v = it.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
+  }
+  S.voice = v;
+  return v;
+}
+if (window.speechSynthesis) { speechSynthesis.onvoiceschanged = pickVoice; pickVoice(); }
+
+const q = []; let speaking = false, curU = null, gen = 0;
+let TP = { said: "", words: [], shown: 0, cur: "", timer: null, boundary: false, final: null };
+function renderSaid() {
+  const cur = TP.words.slice(0, TP.shown).join(" ");
+  const txt = TP.said + (TP.said && cur ? " " : "") + cur;
+  $("said").innerHTML = esc(txt) + (S.phase === "speak" || S.busy ? '<span class="cur"></span>' : "");
+}
+function tpReset() { clearInterval(TP.timer); TP = { said: "", words: [], shown: 0, cur: "", timer: null, boundary: false, final: null }; renderSaid(); }
+function tpBegin(text) {
+  tpEnd(); TP.words = text.split(/\s+/).filter(Boolean); TP.cur = text; TP.shown = 0; TP.boundary = false;
+  const w = TP.words.map((x) => x.length + 1 + (/[,;:]$/.test(x) ? 4 : /[.!?…]$/.test(x) ? 6 : 0));
+  const total = w.reduce((a, b) => a + b, 0) || 1, secs = total / 14.5;
+  let acc = 0; const marks = w.map((x) => { const at = (acc / total) * secs; acc += x; return at; });
+  const t0 = performance.now();
+  TP.timer = setInterval(() => {
+    if (TP.boundary) return;
+    const el = (performance.now() - t0) / 1000; let n = 0; while (n < marks.length && marks[n] <= el) n++;
+    if (n !== TP.shown) { TP.shown = n; renderSaid(); S.target = 0.75; }
+  }, 50);
+}
+function tpBoundary(ci) {
+  if (!TP.words.length) return;
+  if (!TP.boundary) { TP.boundary = true; clearInterval(TP.timer); }
+  let pos = 0, n = 0; while (n < TP.words.length && pos <= ci) { pos += TP.words[n].length + 1; n++; }
+  if (n > TP.shown) { TP.shown = n; renderSaid(); }
+}
+function tpEnd(text) {
+  clearInterval(TP.timer);
+  const s = TP.cur || text || "";
+  if (s) TP.said += (TP.said ? " " : "") + s;
+  TP.words = []; TP.shown = 0; TP.cur = ""; renderSaid();
+}
+function say(text, lang) {
+  text = String(text || "").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim();
+  if (!text) return;
+  if (recMode === "wake") stopRec();   // never listen to herself
+  q.push({ text, gen, lang: lang || "it-IT" }); pump();
+}
+function sayIn(text, lang) { say(text, lang); }
+function voiceFor(lang) {
+  if (/^it/i.test(lang)) return S.voice;
+  const all = window.speechSynthesis ? speechSynthesis.getVoices() : [], code = lang.toLowerCase();
+  return all.find((v) => v.lang.toLowerCase() === code) || all.find((v) => v.lang.toLowerCase().startsWith(code.slice(0, 2))) || null;
+}
+function pump() {
+  if (speaking || !q.length) return;
+  while (q.length && q[0].gen !== gen) q.shift();
+  if (!q.length) return;
+  const items = [q.shift()]; let len = items[0].text.length;
+  while (q.length && q[0].gen === gen && q[0].lang === items[0].lang && len + q[0].text.length < 200) { len += q[0].text.length + 1; items.push(q.shift()); }
+  const text = items.map((x) => x.text).join(" ");
+  if (!window.speechSynthesis || store.get("mute", false)) { tpBegin(text); setTimeout(() => { tpEnd(); afterSpeech(); }, text.length * 55); speaking = true; return; }
+  let u;
+  try { u = new SpeechSynthesisUtterance(text); u.lang = items[0].lang; const vv = voiceFor(items[0].lang); if (vv) u.voice = vv; u.rate = 1.04; u.pitch = 1.02; }
+  catch (e) { tpBegin(text); tpEnd(); afterSpeech(); return; }
+  speaking = true; curU = u; const myGen = gen; let done = false;
+  const fin = () => { if (done) return; done = true; clearTimeout(guard); if (curU === u) { speaking = false; curU = null; }
+    if (myGen === gen) tpEnd(text); afterSpeech(); };
+  let guard = setTimeout(fin, 8000 + text.length * 120);
+  u.onstart = () => { setPhase("speak"); tpBegin(text); };
+  u.onboundary = (e) => { S.target = 1; if (!e.name || e.name === "word") tpBoundary(e.charIndex || 0); };
+  u.onend = u.onerror = fin;
+  try { speechSynthesis.speak(u); } catch (e) { fin(); }
+}
+function afterSpeech() {
+  speaking = false;
+  if (q.length) { pump(); return; }
+  if (!S.busy) { if (!S.sleeping) setPhase("idle"); if (TP.final != null) { $("said").textContent = TP.final; } maybeListenAgain(); }
+}
+function hush() { gen++; q.length = 0; speaking = false; curU = null; try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) { /* ok */ } }
+
+/* ------------------------------------------------------------------ FRIDAY OS: windows */
+// Every app opens as a HUD window that grows out of the reactor and goes back into it when closed.
+const WIN = { z: 30, open: new Map() };
+const APP_ICONS = {
+  meteo: '<path d="M7 17h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.4A3.3 3.3 0 0 0 7 17z"/>',
+  posizione: '<path d="M12 21s-6-5.5-6-10a6 6 0 0 1 12 0c0 4.5-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',
+  timer: '<circle cx="12" cy="13" r="7"/><path d="M12 9v4l2.5 2M9 3h6"/>',
+  note: '<path d="M6 4h9l3 3v13H6z"/><path d="M9 11h6M9 15h6"/>',
+  sistema: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
+  testo: '<path d="M5 6h14M12 6v13M8 19h8"/>',
+  fonti: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+  qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2"/>',
+  scansione: '<path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/><circle cx="12" cy="12" r="3"/>',
+  bussola: '<circle cx="12" cy="12" r="8"/><path d="M14.8 9.2l-1.9 4.7-4.7 1.9 1.9-4.7z"/>',
+};
+function openWin(id, title, html, opts = {}) {
+  const layer = $("winLayer");
+  let w = WIN.open.get(id);
+  if (w) { w.querySelector(".wbody").innerHTML = html; w.querySelector(".wtitle span").textContent = title; focusWin(w); flash(w); return w; }
+  w = document.createElement("section");
+  w.className = "win"; w.dataset.id = id; w.setAttribute("role", "dialog"); w.setAttribute("aria-label", title);
+  w.innerHTML = `<header class="wbar"><span class="wicon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${APP_ICONS[id.split(":")[0]] || ""}</svg></span>
+    <div class="wtitle"><span>${esc(title)}</span><small>FRIDAY // ${esc(id.split(":")[0])}</small></div>
+    <button type="button" class="wclose" aria-label="Chiudi ${esc(title)}">×</button></header><div class="wbody">${html}</div>`;
+  // grow out of the reactor
+  w.style.transformOrigin = `${Math.round(V.ox - 12)}px ${Math.round(V.oy - 90)}px`;
+  layer.appendChild(w); WIN.open.set(id, w); focusWin(w);
+  if (WIN.open.size > 4) closeWin([...WIN.open.keys()][0], true);   // the oldest leaves the stack
+  w.querySelector(".wclose").onclick = () => closeWin(id);
+  w.addEventListener("pointerdown", () => { if (w.classList.contains("behind")) sfx.tap(); focusWin(w); });
+  drag(w);
+  sfx.open();
+  if (opts.onClose) w._onClose = opts.onClose;
+  return w;
+}
+function closeWin(id, quiet) {
+  const w = WIN.open.get(id); if (!w) return;
+  WIN.open.delete(id); if (w._onClose) w._onClose();
+  w.classList.add("closing"); if (!quiet) sfx.close();
+  setTimeout(() => { w.remove(); restack(); }, 320);
+}
+function closeAllWins() { const any = WIN.open.size > 0; [...WIN.open.keys()].forEach((id) => closeWin(id, true)); if (any) sfx.close(); }
+function focusWin(w) { w.style.zIndex = ++WIN.z; restack(); }
+// a card stack: the front window is whole, the ones behind peek out above it
+function restack() {
+  const ws = [...WIN.open.values()].sort((a, b) => (+a.style.zIndex) - (+b.style.zIndex));
+  ws.forEach((w, i) => { const d = ws.length - 1 - i; w.style.setProperty("--depth", d); w.classList.toggle("behind", d > 0); });
+}
+function flash(w) { w.classList.remove("flash"); void w.offsetWidth; w.classList.add("flash"); }
+function drag(w) {
+  const bar = w.querySelector(".wbar"); let sx = 0, sy = 0, ox = 0, oy = 0, on = false;
+  bar.addEventListener("pointerdown", (e) => { if (e.target.closest(".wclose")) return; on = true; sx = e.clientX; sy = e.clientY;
+    ox = parseFloat(w.dataset.x || 0); oy = parseFloat(w.dataset.y || 0); bar.setPointerCapture(e.pointerId); });
+  bar.addEventListener("pointermove", (e) => { if (!on) return; const x = ox + e.clientX - sx, y = oy + e.clientY - sy;
+    w.dataset.x = x; w.dataset.y = y; w.style.translate = `${x}px ${y}px`; });
+  const end = (e) => { if (!on) return; on = false;
+    // flick it far enough and it closes
+    if (Math.abs(parseFloat(w.dataset.x || 0)) > window.innerWidth * 0.42) closeWin(w.dataset.id); };
+  bar.addEventListener("pointerup", end); bar.addEventListener("pointercancel", end);
+}
+
+/* ------------------------------------------------------------------ apps */
+const WMO = { 0: "sereno", 1: "quasi sereno", 2: "poco nuvoloso", 3: "coperto", 45: "nebbia", 48: "nebbia gelata", 51: "pioggerella",
+  53: "pioggerella", 55: "pioggerella fitta", 61: "pioggia debole", 63: "pioggia", 65: "pioggia forte", 71: "neve debole", 73: "neve",
+  75: "neve forte", 80: "rovesci", 81: "rovesci", 82: "rovesci forti", 95: "temporale", 96: "temporale con grandine", 99: "temporale forte" };
+function getPos() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error("posizione non disponibile")); return; }
+    navigator.geolocation.getCurrentPosition((p) => resolve(p.coords), (e) => reject(new Error(e.code === 1 ? "permesso negato" : "posizione non trovata")),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  });
+}
+async function jget(url) { const r = await fetch(url); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }
+async function place(lat, lon) {
+  try {
+    const j = await jget(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&accept-language=it&lat=${lat}&lon=${lon}`);
+    const a = j.address || {};
+    return { via: [a.road, a.house_number].filter(Boolean).join(" "), citta: a.city || a.town || a.village || a.municipality || "", zona: a.suburb || a.neighbourhood || "",
+      provincia: a.county || a.state || "", testo: j.display_name || "" };
+  } catch (e) { return null; }
+}
+async function appMeteo(luogo) {
+  let lat, lon, nome;
+  if (luogo) {
+    const g = await jget(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=it&name=${encodeURIComponent(luogo)}`);
+    const r = g.results && g.results[0]; if (!r) throw new Error("non trovo " + luogo);
+    lat = r.latitude; lon = r.longitude; nome = r.name;
+  } else {
+    const c = await getPos(); lat = c.latitude; lon = c.longitude;
+    const p = await place(lat, lon); nome = (p && (p.citta || p.zona)) || "qui";
+  }
+  const m = await jget(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&forecast_days=2`
+    + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
+    + "&hourly=temperature_2m,precipitation_probability,weather_code");
+  const cur = m.current, now = Date.now();
+  const hours = m.hourly.time.map((tm, i) => ({ t: new Date(tm), temp: m.hourly.temperature_2m[i], pp: m.hourly.precipitation_probability[i] }))
+    .filter((h) => h.t.getTime() >= now - 3600e3).slice(0, 12);
+  const desc = WMO[cur.weather_code] || "variabile";
+  const max = Math.max(...hours.map((h) => h.temp)), min = Math.min(...hours.map((h) => h.temp)), span = Math.max(1, max - min);
+  const pts = hours.map((h, i) => `${(i / (hours.length - 1)) * 100},${40 - ((h.temp - min) / span) * 32}`).join(" ");
+  openWin("meteo", "Meteo · " + nome, `
+    <div class="big"><b>${Math.round(cur.temperature_2m)}°</b><span>${esc(desc)}<br><small>percepiti ${Math.round(cur.apparent_temperature)}° · vento ${Math.round(cur.wind_speed_10m)} km/h · umidità ${cur.relative_humidity_2m}%</small></span></div>
+    <svg class="spark" viewBox="0 0 100 44" preserveAspectRatio="none" aria-label="Temperatura nelle prossime ore"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>
+    <div class="hours">${hours.filter((_, i) => i % 3 === 0).map((h) => `<span><b>${h.t.getHours()}:00</b>${Math.round(h.temp)}°<small>${h.pp ?? 0}%</small></span>`).join("")}</div>`);
+  return { luogo: nome, temperatura: Math.round(cur.temperature_2m), percepita: Math.round(cur.apparent_temperature), cielo: desc,
+    vento_kmh: Math.round(cur.wind_speed_10m), pioggia_prossime_ore: Math.max(...hours.slice(0, 6).map((h) => h.pp || 0)) + "%" };
+}
+async function appPosizione() {
+  const c = await getPos();
+  const p = await place(c.latitude, c.longitude);
+  openWin("posizione", "Posizione", `
+    <div class="big"><b class="mono-b">${c.latitude.toFixed(4)}<br>${c.longitude.toFixed(4)}</b><span>${esc(p ? [p.via, p.zona, p.citta].filter(Boolean).join(", ") : "Indirizzo non disponibile")}<br><small>precisione ±${Math.round(c.accuracy)} m${c.altitude != null ? " · quota " + Math.round(c.altitude) + " m" : ""}</small></span></div>
+    <div class="radar" aria-hidden="true"><i></i></div>
+    <div class="wbtns"><button type="button" class="pill" data-compass>Bussola</button></div>`);
+  const b = WIN.open.get("posizione").querySelector("[data-compass]"); if (b) b.onclick = appBussola;
+  return { lat: +c.latitude.toFixed(5), lon: +c.longitude.toFixed(5), precisione_m: Math.round(c.accuracy), indirizzo: p ? p.testo : "non disponibile" };
+}
+let compassOn = null;
+async function appBussola() {
+  try { if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) { const r = await DeviceOrientationEvent.requestPermission(); if (r !== "granted") throw 0; } }
+  catch (e) { toast("Serve il permesso per l'orientamento del telefono."); return; }
+  const w = openWin("bussola", "Bussola", `<div class="compass"><div class="needle" id="needle"></div><b id="heading">—</b></div>`,
+    { onClose: () => { window.removeEventListener("deviceorientation", compassOn, true); compassOn = null; } });
+  compassOn = (e) => {
+    const hd = e.webkitCompassHeading != null ? e.webkitCompassHeading : (e.alpha != null ? 360 - e.alpha : null);
+    if (hd == null) return;
+    const n = w.querySelector("#needle"), h = w.querySelector("#heading");
+    if (n) n.style.transform = `rotate(${-hd}deg)`;
+    if (h) h.textContent = Math.round(hd) + "° " + ["N", "NE", "E", "SE", "S", "SO", "O", "NO"][Math.round(hd / 45) % 8];
+  };
+  window.addEventListener("deviceorientation", compassOn, true);
+}
+const TIMERS = [];
+function appTimer(secondi, etichetta) {
+  const secs = Math.max(1, Math.min(86400, Math.round(Number(secondi) || 60))), label = String(etichetta || "Timer").slice(0, 40);
+  const id = "timer:" + Date.now(), end = Date.now() + secs * 1000;
+  const w = openWin(id, label, `<div class="tring"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="44" class="tbg"/><circle cx="50" cy="50" r="44" class="tfg" pathLength="100"/></svg><b class="tleft">--:--</b></div>`,
+    { onClose: () => clearInterval(tk) });
+  const fg = w.querySelector(".tfg"), left = w.querySelector(".tleft");
+  let tk = 0;
+  const upd = () => {
+    const ms = Math.max(0, end - Date.now()), s = Math.ceil(ms / 1000);
+    left.textContent = s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+      : `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    fg.style.strokeDashoffset = String(100 - (ms / (secs * 1000)) * 100);
+    if (ms <= 0) { clearInterval(tk); sfx.alarm(); if (WIN.open.get(id)) { focusWin(w); flash(w); } wakeUp(true); hush();
+      say(label === "Timer" ? "Capo, il timer è finito." : `Capo, è finito il timer: ${label}.`); }
+  };
+  upd(); tk = setInterval(upd, 250);
+  TIMERS.push(tk);
+  return `Timer "${label}" partito: ${secs} secondi.`;
+}
+function notes() { return store.get("notes", []); }
+function renderNotes() {
+  const list = notes();
+  openWin("note", "Note", list.length ? `<ul class="nlist">${list.map((n, i) => `<li><span>${esc(n.t)}<small>${esc(n.d)}</small></span><button type="button" class="pill" data-del="${i}" aria-label="Cancella nota">×</button></li>`).join("")}</ul>`
+    : `<p class="note">Nessuna nota. Dì "FRIDAY, segnati che…"</p>`);
+  WIN.open.get("note").querySelectorAll("[data-del]").forEach((b) => b.onclick = () => {
+    const l = notes(); l.splice(Number(b.dataset.del), 1); store.set("notes", l); sfx.tap(); renderNotes(); });
+}
+function appNota(testo) {
+  const l = notes(); l.unshift({ t: String(testo).slice(0, 300), d: new Date().toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) });
+  store.set("notes", l.slice(0, 50)); renderNotes(); return "Nota salvata.";
+}
+function deviceInfo() {
+  const ua = navigator.userAgent, ios = /iPhone OS (\d+)_(\d+)/.exec(ua);
+  return { dispositivo: /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : "computer", sistema: ios ? `iOS ${ios[1]}.${ios[2]}` : navigator.platform,
+    schermo: `${screen.width}×${screen.height} @${window.devicePixelRatio || 1}x`, rete: navigator.onLine ? "online" : "offline",
+    lingua: navigator.language, fuso: Intl.DateTimeFormat().resolvedOptions().timeZone };
+}
+function appSistema() {
+  const d = deviceInfo(), up = Math.floor((Date.now() - S.t0) / 1000);
+  const rows = [["Dispositivo", d.dispositivo + " · " + d.sistema], ["Schermo", d.schermo], ["Rete", d.rete], ["Fuso", d.fuso],
+    ["Cervello", model().replace("claude-", "").replace(/-(\d)-(\d)$/, " $1.$2")], ["Richieste", String(S.calls)], ["Ascolto nome", S.wakeListening ? "attivo" : "spento"],
+    ["Sessione", `${Math.floor(up / 60)} min`], ["Voce", S.voice ? S.voice.name : "predefinita"]];
+  openWin("sistema", "Diagnostica", `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+    <div class="gauges">${["Nucleo", "Rete", "Voce"].map((n, i) => `<span><i style="--v:${[96, navigator.onLine ? 88 : 4, S.voice ? 92 : 60][i]}"></i>${n}</span>`).join("")}</div>`);
+  return d;
+}
+function appTesto(titolo, testo, lingua) {
+  openWin("testo", titolo || "Messaggio", `<p class="huge">${esc(testo)}</p>`);
+  if (lingua && !/^it/i.test(lingua)) sayIn(testo, lingua);
+  return "Testo mostrato a schermo" + (lingua && !/^it/i.test(lingua) ? " e letto in " + lingua : "") + ".";
+}
+function showSources(list) {
+  if (!list.length) return;
+  openWin("fonti", "Fonti dal web", `<ul class="slist">${list.slice(0, 6).map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || s.url)}</a><small>${esc((s.url || "").replace(/^https?:\/\/(www\.)?/, "").split("/")[0])}</small></li>`).join("")}</ul>`);
+}
+
+/* ------------------------------------------------------------------ sleep and wake */
+let idleT = null;
+function bumpIdle() {
+  clearTimeout(idleT);
+  const mins = store.get("sleepAfter", 1);
+  if (mins > 0) idleT = setTimeout(() => { if (!S.busy && !speaking && !q.length && !rec && $("cam").hidden && !WIN.open.size) goSleep(); }, mins * 60000);
+}
+function goSleep(spoken) {
+  if (S.sleeping || !S.booted) return;
+  if (spoken) { say("Vado in riposo. Chiamami quando ti servo."); }
+  setTimeout(() => {
+    closeAllWins(); hideCard();
+    S.sleeping = true; app.classList.add("asleep"); sfx.sleep(); setPhase("sleep", SR && store.get("wake", true) ? "In riposo · dì «Friday»" : "In riposo · tocca il cerchio");
+    $("youSaid").textContent = ""; $("said").textContent = "";
+    startWake();
+  }, spoken ? 2600 : 0);
+}
+function wakeUp(silent) {
+  bumpIdle();
+  if (!S.sleeping) return false;
+  S.sleeping = false; app.classList.remove("asleep"); sfx.wake(); setPhase("idle");
+  if (!silent) { /* the caller decides what FRIDAY says */ }
+  return true;
+}
+
+/* ------------------------------------------------------------------ ears: wake word + commands */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const WAKE = /\b(?:hey\s+|ehi\s+|ok\s+)?(fr[aei]{1,2}d[aeiy]{1,2}|frid[ae]y|friday|fraidei|fraiday|fr[ae]ide|venerd[iì])\b[\s,.!?]*/i;
+let rec = null, recMode = null, heard = "", recTimer = null, wakeRetry = 0;
+function stopRec() { if (rec) { const r = rec; rec = null; recMode = null; try { r.abort(); } catch (e) { /* ok */ } } S.wakeListening = false; }
+function startWake() {
+  if (!SR || !store.get("wake", true) || !S.booted || rec || speaking || q.length || S.busy || !$("cam").hidden) return;
+  const r = new SR(); rec = r; recMode = "wake"; r.lang = "it-IT"; r.interimResults = true; r.continuous = true; r.maxAlternatives = 1;
+  r.onstart = () => { S.wakeListening = true; wakeRetry = 0; };
+  r.onresult = (e) => {
+    if (rec !== r) return;
+    let txt = ""; for (let i = e.resultIndex; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    const m = WAKE.exec(txt);
+    if (!m) return;
+    // the name was said: whatever follows it is the command
+    const after = txt.slice(m.index + m[0].length).trim();
+    rec = null; recMode = null; S.wakeListening = false; try { r.abort(); } catch (er) { /* ok */ }
+    heard = after; const woke = wakeUp();
+    if (woke) setTimeout(() => listen({ prefix: after, greet: !after }), 900); else listen({ prefix: after, greet: !after });
+  };
+  r.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { store.set("wakeBlocked", true); S.wakeBlocked = true; } };
+  r.onend = () => {
+    if (rec === r) { rec = null; recMode = null; }
+    S.wakeListening = false;
+    if (S.wakeBlocked) { if (S.sleeping) setPhase("sleep", "In riposo · tocca il cerchio"); return; }
+    if (++wakeRetry < 30) setTimeout(startWake, 350);   // Safari ends sessions after silence: keep the ear open
+  };
+  try { r.start(); } catch (e) { rec = null; recMode = null; }
+}
+// one command: ends on a short pause, then goes to Claude
+function listen({ prefix = "", greet = false } = {}) {
+  if (!S.booted) return;
+  if (!apiKey()) { openKeySheet(); return; }
+  if (!SR) { toast("Qui il riconoscimento vocale non c'è: aprila da Safari. Intanto scrivi."); openInput(); return; }
+  if (rec && recMode === "cmd") { try { rec.stop(); } catch (e) { /* ok */ } return; }
+  stopRec(); wakeUp(true);
+  hush(); if (S.ctl) { S.ctl.abort(); S.ctl = null; S.busy = false; }
+  tpReset(); hideCard();
+  if (greet) { say("Dimmi, capo."); S.afterSpeech = () => listen({ prefix: "" }); return; }
+  heard = prefix;
+  const r = new SR(); rec = r; recMode = "cmd"; r.lang = "it-IT"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  r.onstart = () => { setPhase("listen"); $("micBtn").classList.add("on"); sfx.listen(); $("youSaid").textContent = heard || "…";
+    clearTimeout(recTimer); recTimer = setTimeout(() => { try { r.stop(); } catch (er) { /* ok */ } }, heard ? 2200 : 7000); };
+  r.onresult = (e) => {
+    let txt = ""; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    heard = (prefix ? prefix + " " : "") + txt.replace(WAKE, "").trim(); $("youSaid").textContent = heard || "…"; S.typing = Math.min(1, S.typing + 0.5);
+    clearTimeout(recTimer); recTimer = setTimeout(() => { try { r.stop(); } catch (er) { /* ok */ } }, 1500);
+  };
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      toast("Consenti microfono e riconoscimento vocale: Impostazioni → Safari → Microfono, e Dettatura attiva.");
+    } else if (e.error !== "no-speech" && e.error !== "aborted") toast("Ascolto interrotto (" + e.error + ").");
+  };
+  r.onend = () => {
+    clearTimeout(recTimer); if (rec === r) { rec = null; recMode = null; } $("micBtn").classList.remove("on");
+    const said = heard.trim(); heard = "";
+    if (said.length > 1) { sfx.send(); route(said); }
+    else { if (S.phase === "listen") setPhase("idle"); $("youSaid").textContent = ""; setTimeout(startWake, 400); }
+  };
+  try { r.start(); } catch (e) { rec = null; recMode = null; toast("Non riesco ad aprire il microfono."); }
+}
+// a few things FRIDAY does on the spot, without asking Claude
+function route(text) {
+  const t = text.toLowerCase();
+  if (/^(vai a )?(dormi|riposo|riposati|a nanna|spegniti|standby|vai in riposo)\b/.test(t)) { $("youSaid").textContent = text; goSleep(true); return; }
+  if (/^(chiudi|via) (tutto|tutte|le finestre)/.test(t)) { $("youSaid").textContent = text; closeAllWins(); say("Fatto."); return; }
+  if (/^(stop|basta|zitta|silenzio)\b/.test(t)) { hush(); setPhase("idle"); return; }
+  ask(text);
+}
+// conversation mode: when FRIDAY has finished talking, listen again (or go back to listening for her name)
+function maybeListenAgain() {
+  if (S.afterSpeech) { const f = S.afterSpeech; S.afterSpeech = null; setTimeout(f, 250); return; }
+  bumpIdle();
+  if (!S.booted || rec || S.busy || !$("cam").hidden) return;
+  if (store.get("convo", false) && !$("sheetHost").innerHTML) setTimeout(() => { if (!speaking && !q.length && !S.busy && !rec) listen(); }, 450);
+  else setTimeout(startWake, 500);
+}
+
+/* ------------------------------------------------------------------ brain (Claude API, straight from the phone) */
+const API = "https://api.anthropic.com/v1/messages";
+const MODELS = { smart: "claude-sonnet-5-5", fast: "claude-haiku-5-5" };
+function apiKey() { return store.get("key", ""); }
+function model() { return MODELS[store.get("model", "smart")] || MODELS.smart; }
+const RULES = `Sei F.R.I.D.A.Y., l'intelligenza artificiale personale di Matteo. Giri davvero sul suo iPhone e il tuo cervello è Claude.
+Stasera è Halloween e Matteo è vestito da Tony Stark: tu sei la sua FRIDAY, ma reale. Lo chiami "capo" (ogni tanto "boss").
+Come parli: italiano, calma, ironica, brillante, sicura. Le tue risposte vengono LETTE AD ALTA VOCE: 1-3 frasi brevi, niente elenchi, niente markdown, niente emoji, numeri e orari scritti come si dicono. Non chiudere le risposte con una domanda se non serve.
+Sei anche il sistema operativo del telefono di Matteo: apri le app come finestre olografiche. Cosa sai fare davvero: cercare sul web (web_search), meteo dal vivo (meteo), dove siete (posizione), timer (imposta_timer), note (aggiungi_nota), mostrare a schermo un testo grande, anche tradotto e letto in un'altra lingua per chi avete davanti (mostra_testo), un QR con il contatto di Matteo o un messaggio da far inquadrare (mostra_qr), la fotocamera per analizzare qualcosa o qualcuno (apri_scansione), aprire le app diagnostica, note e bussola (apri_app), chiudere le finestre (chiudi_finestre), andare in riposo (riposo). Usa gli strumenti quando servono e non dire mai di aver fatto qualcosa che non hai fatto. Dopo uno strumento basta una frase: i dettagli sono già sullo schermo.
+Cosa non fai: niente hacking, niente accesso ai telefoni o ai dispositivi degli altri, niente riconoscimento di chi è una persona. Se te lo chiedono rispondi con stile e proponi una cosa vera, per esempio il QR: chi lo inquadra riceve il contatto o il messaggio sul suo telefono.
+Con le persone che Matteo incontra sei simpatica e accogliente.
+Su Matteo: studente di Informatica all'UNICAM, sviluppatore, socio tecnico dell'agenzia web On-Line, cintura nera di karate secondo DAN. Sta costruendo la sua AI personale: sei tu. A casa, sul suo PC, gira la tua versione completa con la memoria su Obsidian.`;
+
+const CLIENT_TOOLS = [
+  { name: "meteo", description: "Meteo attuale e delle prossime ore. Senza luogo usa la posizione del telefono. Apre la finestra Meteo e restituisce i dati.",
+    input_schema: { type: "object", properties: { luogo: { type: "string", description: "città, se Matteo ne nomina una" } } } },
+  { name: "posizione", description: "Dove si trova Matteo adesso: coordinate e indirizzo. Apre la finestra Posizione.", input_schema: { type: "object", properties: {} } },
+  { name: "imposta_timer", description: "Avvia un timer con conto alla rovescia a schermo; alla fine FRIDAY avvisa a voce.",
+    input_schema: { type: "object", properties: { secondi: { type: "number" }, etichetta: { type: "string", description: "es. pizza, pausa" } }, required: ["secondi"] } },
+  { name: "aggiungi_nota", description: "Salva una nota sul telefono (cose da ricordare, nomi, numeri) e apre la finestra Note.",
+    input_schema: { type: "object", properties: { testo: { type: "string" } }, required: ["testo"] } },
+  { name: "mostra_testo", description: "Mostra un testo grande a schermo per chi è davanti a Matteo. Con lingua (es. en-US, es-ES, fr-FR) lo legge anche ad alta voce in quella lingua: usalo per tradurre.",
+    input_schema: { type: "object", properties: { titolo: { type: "string" }, testo: { type: "string" }, lingua: { type: "string" } }, required: ["testo"] } },
+  { name: "apri_app", description: "Apre un'app di FRIDAY: sistema (diagnostica del telefono), note, bussola.",
+    input_schema: { type: "object", properties: { app: { type: "string", enum: ["sistema", "note", "bussola"] } }, required: ["app"] } },
+  { name: "chiudi_finestre", description: "Chiude tutte le finestre aperte.", input_schema: { type: "object", properties: {} } },
+  { name: "riposo", description: "FRIDAY va in riposo: si ritira nell'angolo e si risveglia quando Matteo dice 'Friday'.", input_schema: { type: "object", properties: {} } },
+  { name: "mostra_qr", description: "Mostra a schermo un QR da far inquadrare a chi è davanti a Matteo. tipo 'contatto' = biglietto da visita di Matteo; tipo 'messaggio' = un breve testo.",
+    input_schema: { type: "object", properties: { tipo: { type: "string", enum: ["contatto", "messaggio"] }, testo: { type: "string", description: "il messaggio, solo per tipo messaggio" } }, required: ["tipo"] } },
+  { name: "apri_scansione", description: "Apre la fotocamera con il mirino di FRIDAY: Matteo inquadra e scatta, poi analizzi la foto. Usalo quando ti chiedono di guardare, scansionare o analizzare qualcosa o qualcuno.",
+    input_schema: { type: "object", properties: {} } },
+];
+async function runTool(name, input) {
+  try {
+    if (name === "mostra_qr") { showQR(input.tipo === "messaggio" ? "messaggio" : "contatto", String(input.testo || "")); return "QR mostrato a schermo."; }
+    if (name === "apri_scansione") { setTimeout(() => openCamera(), 1200); return "Fotocamera aperta: Matteo sta inquadrando."; }
+    if (name === "meteo") return JSON.stringify(await appMeteo(input.luogo ? String(input.luogo) : ""));
+    if (name === "posizione") return JSON.stringify(await appPosizione());
+    if (name === "imposta_timer") return appTimer(input.secondi, input.etichetta);
+    if (name === "aggiungi_nota") return appNota(String(input.testo || ""));
+    if (name === "mostra_testo") return appTesto(input.titolo ? String(input.titolo) : "", String(input.testo || ""), input.lingua ? String(input.lingua) : "");
+    if (name === "apri_app") { const a = String(input.app); if (a === "note") renderNotes(); else if (a === "bussola") appBussola(); else appSistema(); return "App " + a + " aperta."; }
+    if (name === "chiudi_finestre") { closeAllWins(); return "Finestre chiuse."; }
+    if (name === "riposo") { S.afterSpeech = () => goSleep(false); return "Vai in riposo appena finisci di parlare: saluta in una frase."; }
+  } catch (e) { return "Errore: " + (e.message || e); }
+  return "Strumento sconosciuto.";
+}
+class ApiError extends Error { constructor(status, type, message) { super(message); this.status = status; this.type = type; } }
+async function apiFetch(body, signal) {
+  const key = apiKey();
+  if (!key) throw new ApiError(0, "no_key", "Manca la chiave API");
+  S.calls++;
+  let r;
+  try {
+    r = await fetch(API, { method: "POST", signal, headers: {
+      "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true" }, body: JSON.stringify(body) });
+  } catch (e) { if (e.name === "AbortError") throw e; throw new ApiError(0, "network", "Rete non raggiungibile"); }
+  if (!r.ok) {
+    let type = "error", msg = "HTTP " + r.status;
+    try { const j = await r.json(); type = (j.error && j.error.type) || type; msg = (j.error && j.error.message) || msg; } catch (e) { /* not json */ }
+    throw new ApiError(r.status, type, msg);
+  }
+  return r;
+}
+// One streamed request. Returns the assistant content blocks and the stop reason.
+async function streamOnce(body, onText, signal) {
+  const r = await apiFetch(Object.assign({}, body, { stream: true }), signal);
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", stop = null; const blocks = [], json = {};
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+      if (ev.type === "content_block_start") {
+        const b = Object.assign({}, ev.content_block);
+        if (b.type === "text") b.text = b.text || "";
+        if (b.type === "tool_use" || b.type === "server_tool_use") { json[ev.index] = ""; b.input = b.input || {}; if (b.type === "server_tool_use") { setPhase("think", "Cerco sul web"); sfx.scanSoft(); } }
+        if (b.type === "web_search_tool_result" && Array.isArray(b.content)) S.sources.push(...b.content.filter((x) => x.url).map((x) => ({ url: x.url, title: x.title })));
+        blocks[ev.index] = b;
+      } else if (ev.type === "content_block_delta") {
+        const b = blocks[ev.index]; if (!b) continue;
+        if (ev.delta.type === "text_delta") { b.text += ev.delta.text; onText && onText(ev.delta.text); }
+        else if (ev.delta.type === "input_json_delta") json[ev.index] += ev.delta.partial_json;
+      } else if (ev.type === "content_block_stop") {
+        const b = blocks[ev.index];
+        if (b && json[ev.index] !== undefined) { try { b.input = json[ev.index] ? JSON.parse(json[ev.index]) : {}; } catch (e) { b.input = {}; } }
+        if (b && b.citations) delete b.citations;
+      } else if (ev.type === "message_delta") { stop = ev.delta && ev.delta.stop_reason; }
+      else if (ev.type === "error") throw new ApiError(500, (ev.error && ev.error.type) || "error", (ev.error && ev.error.message) || "errore");
+    }
+  }
+  return { blocks: blocks.filter(Boolean), stop };
+}
+const TOOL_LABEL = { meteo: "Meteo", posizione: "Posizione", imposta_timer: "Timer", aggiungi_nota: "Note", mostra_testo: "Schermo",
+  mostra_qr: "QR", apri_scansione: "Fotocamera", apri_app: "Apro", chiudi_finestre: "Chiudo", riposo: "Riposo" };
+// A full turn: streams text, runs FRIDAY's own tools, lets Claude search the web.
+async function claudeTurn(messages, onText, signal) {
+  const nl = notes().slice(0, 12).map((n) => "- " + n.t).join("\n");
+  const body = { model: model(), max_tokens: 600, system: RULES + (nl ? "\nNote salvate da Matteo (usale se servono):\n" + nl : ""), messages: messages.slice(),
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }, ...CLIENT_TOOLS] };
+  let text = "";
+  for (let round = 0; round < 5; round++) {
+    const res = await streamOnce(body, (d) => { text += d; onText(text); }, signal);
+    if (res.stop === "tool_use") {
+      const uses = res.blocks.filter((b) => b.type === "tool_use");
+      body.messages.push({ role: "assistant", content: res.blocks });
+      const results = [];
+      for (const u of uses) { setPhase("think", TOOL_LABEL[u.name] || "Lavoro"); results.push({ type: "tool_result", tool_use_id: u.id, content: String(await runTool(u.name, u.input || {})) }); }
+      body.messages.push({ role: "user", content: results });
+      if (text && !/\s$/.test(text)) { text += " "; }
+      continue;
+    }
+    if (res.stop === "pause_turn") { body.messages.push({ role: "assistant", content: res.blocks }); continue; }
+    break;
+  }
+  return text.trim();
+}
+
+function nowCtx() {
+  const d = new Date();
+  return `[${d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}, ore ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}]`;
+}
+function apiErrorText(e) {
+  if (!e) return "Il collegamento con il cervello si è interrotto. Riprova.";
+  if (e.type === "no_key") return "Mi manca la chiave API, capo: la inserisci da Protocolli.";
+  if (e.status === 401 || e.type === "authentication_error") return "La chiave API non funziona, capo: controllala da Protocolli.";
+  if (e.status === 429 || e.type === "rate_limit_error") return "Troppe richieste tutte insieme. Dammi un attimo.";
+  if (e.status === 529 || e.type === "overloaded_error") return "I server di Claude sono sovraccarichi. Riprova tra poco.";
+  if (e.type === "network") return "Sono senza rete, capo.";
+  if (/credit|billing|balance/i.test(e.message || "")) return "Sono finiti i crediti API, capo.";
+  return "Il collegamento con il cervello si è interrotto. Riprova.";
+}
+
+const SPLIT = /([.!?…])(\s+|$)/;
+async function ask(userText, { label = "" } = {}) {
+  if (!apiKey()) { openKeySheet(); return; }
+  if (S.ctl) S.ctl.abort();
+  hush(); tpReset(); hideCard();
+  const ctl = new AbortController(); S.ctl = ctl; S.busy = true; S.sources = [];
+  stopRec(); wakeUp(true);
+  $("youSaid").textContent = label || userText;
+  S.turns.push({ role: "user", content: `${nowCtx()} ${userText}` });
+  setPhase("think"); sfx.think(); brainDot("live");
+  const t0 = performance.now(); let spokenUpTo = 0, first = true;
+  try {
+    const msgs = S.turns.slice(-14); while (msgs.length && msgs[0].role !== "user") msgs.shift();
+    const text = await claudeTurn(msgs, (all) => {
+      if (ctl !== S.ctl) return;
+      if (first) { first = false; $("lat").textContent = ((performance.now() - t0) / 1000).toFixed(1) + "s"; sfx.reply(); }
+      let rest = all.slice(spokenUpTo), m;
+      while ((m = SPLIT.exec(rest)) && m.index + 1 >= 12) {
+        const cut = m.index + m[0].length; say(rest.slice(0, cut)); spokenUpTo += cut; rest = all.slice(spokenUpTo);
+      }
+    }, ctl.signal);
+    if (ctl !== S.ctl) return;
+    const tail = text.slice(spokenUpTo).trim(); if (tail) say(tail);
+    if (!text) say("Fatto, capo.");
+    if (S.sources.length) showSources(S.sources);
+    TP.final = text.replace(/\s+/g, " ").trim() || null;
+    S.turns.push({ role: "assistant", content: text || "Fatto." });
+    S.turns = S.turns.slice(-16); store.set("turns", S.turns);
+    brainDot("ok");
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    brainDot(e && (e.status === 401 || e.type === "no_key") ? "bad" : "ok");
+    sfx.error(); setPhase("error"); say(apiErrorText(e));
+    S.turns.pop();
+  } finally {
+    if (ctl === S.ctl) { S.busy = false; S.ctl = null; if (!speaking && !q.length) setPhase("idle"); }
+  }
+}
+
+/* ------------------------------------------------------------------ scan: live camera with FRIDAY's sight, then analysis */
+let camStream = null, camRAF = 0;
+async function openCamera() {
+  if (!S.booted) return;
+  hush(); hideCard(); closeSheet();
+  const ov = $("cam"), vid = $("camVideo");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $("shot").click(); return; }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+  } catch (e) { toast("Fotocamera non disponibile: uso le foto."); $("shot").click(); return; }
+  vid.srcObject = camStream; ov.hidden = false; setPhase("scan", "Inquadra"); sfx.listen();
+  try { await vid.play(); } catch (e) { /* autoplay with playsinline + muted */ }
+  drawSight();
+}
+function closeCamera() {
+  cancelAnimationFrame(camRAF);
+  if (camStream) camStream.getTracks().forEach((t) => t.stop());
+  camStream = null; $("cam").hidden = true;
+  if (S.phase === "scan" && !S.busy) setPhase("idle");
+}
+function drawSight() {
+  const c = $("camHud"), g = c.getContext("2d");
+  const loop = (now) => {
+    camRAF = requestAnimationFrame(loop);
+    const w = c.clientWidth, h = c.clientHeight, d = Math.min(2, window.devicePixelRatio || 1);
+    if (c.width !== Math.round(w * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
+    g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, w, h);
+    const s = Math.min(w, h) * 0.62, x = (w - s) / 2, y = (h - s) / 2, k = s * 0.14, t = now / 1000;
+    g.strokeStyle = "rgba(255,173,51,.95)"; g.lineWidth = 2;
+    [[x, y, 1, 1], [x + s, y, -1, 1], [x, y + s, 1, -1], [x + s, y + s, -1, -1]].forEach(([px, py, sx, sy]) => {
+      g.beginPath(); g.moveTo(px, py + sy * k); g.lineTo(px, py); g.lineTo(px + sx * k, py); g.stroke(); });
+    const ly = y + ((Math.sin(t * 1.6) + 1) / 2) * s;
+    const grad = g.createLinearGradient(0, ly - 30, 0, ly + 2); grad.addColorStop(0, "rgba(255,90,79,0)"); grad.addColorStop(1, "rgba(255,90,79,.55)");
+    g.fillStyle = grad; g.fillRect(x, ly - 30, s, 32);
+    g.beginPath(); g.arc(w / 2, h / 2, 10 + 3 * Math.sin(t * 4), 0, Math.PI * 2); g.strokeStyle = "rgba(255,173,51,.7)"; g.lineWidth = 1.2; g.stroke();
+    g.font = "500 11px 'IBM Plex Mono', monospace"; g.fillStyle = "rgba(255,173,51,.9)";
+    g.fillText("FRIDAY // ACQUISIZIONE", x, y - 12);
+    g.fillText("T+" + t.toFixed(1).padStart(6, "0"), x + s - 74, y + s + 20);
+  };
+  cancelAnimationFrame(camRAF); camRAF = requestAnimationFrame(loop);
+}
+function grabFrame() {
+  const v = $("camVideo"), max = 1280, r = Math.min(1, max / Math.max(v.videoWidth || max, v.videoHeight || max));
+  const c = document.createElement("canvas"); c.width = Math.round((v.videoWidth || 1280) * r); c.height = Math.round((v.videoHeight || 720) * r);
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.82);
+}
+function fileToJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const max = 1280, r = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); resolve(c.toDataURL("image/jpeg", 0.82)); };
+    img.onerror = () => reject(new Error("foto illeggibile")); img.src = url;
+  });
+}
+const SCAN_PROMPT = `Sei FRIDAY, l'AI di Matteo (stasera vestito da Tony Stark). Analizza la foto come un HUD di Iron Man, in italiano, con ironia leggera.
+Regole: descrivi solo cose visibili e innocue (costumi, vestiti, oggetti, luogo, atmosfera, espressione). Non dire mai chi è una persona e non stimare dati personali o sensibili (età precisa, origine, salute, orientamento). Se ci sono persone, sii gentile e simpatica.
+Rispondi SOLO con JSON: {"titolo": "2-4 parole", "righe": [{"etichetta": "1-2 parole", "valore": "breve"}], "battuta": "1-2 frasi da dire ad alta voce"}. Da 3 a 5 righe.`;
+async function analyze(dataUrl) {
+  if (!apiKey()) { openKeySheet(); return; }
+  hush(); tpReset(); setPhase("scan", "Analisi"); sfx.scan(); $("youSaid").textContent = "Scansione";
+  showCard("Scansione", [["", "Analisi in corso…"]], dataUrl);
+  const ctl = new AbortController(); S.ctl = ctl; S.busy = true;
+  try {
+    const r = await apiFetch({ model: model(), max_tokens: 500, messages: [{ role: "user", content: [
+      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: dataUrl.split(",")[1] } },
+      { type: "text", text: SCAN_PROMPT }] }] }, ctl.signal);
+    const j = await r.json();
+    const raw = (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    let data = null; try { data = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); } catch (e) { data = null; }
+    const rows = data && Array.isArray(data.righe) ? data.righe.slice(0, 6).map((x) => [String(x.etichetta || ""), String(x.valore || "")]) : [];
+    showCard(String((data && data.titolo) || "Scansione"), rows.length ? rows : [["", raw.slice(0, 200) || "Niente da segnalare"]], dataUrl);
+    sfx.reply();
+    const line = String((data && data.battuta) || "Scansione completata, capo.");
+    TP.final = line; say(line);
+    S.turns.push({ role: "user", content: `${nowCtx()} [Matteo ha scansionato una foto]` }, { role: "assistant", content: line + " " + rows.map((x) => x.join(": ")).join("; ") });
+    store.set("turns", S.turns.slice(-16));
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    sfx.error(); setPhase("error"); say(apiErrorText(e));
+  } finally { if (ctl === S.ctl) { S.busy = false; S.ctl = null; if (!speaking && !q.length) setPhase("idle"); } }
+}
+
+/* ------------------------------------------------------------------ cards, QR */
+function hideCard() { $("card").hidden = true; $("card").innerHTML = ""; }
+function showCard(title, rows, img) {
+  const c = $("card");
+  c.innerHTML = `<div class="ctitle"><span>${esc(title)}</span><button type="button" class="pill" id="cardX" aria-label="Chiudi" style="padding:4px 10px">×</button></div>`
+    + (img ? `<img class="shot" src="${img}" alt="Foto scansionata">` : "")
+    + `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+  c.hidden = false; $("cardX").onclick = () => { sfx.tap(); hideCard(); };
+}
+const plain = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7E\n]/g, "");
+function vcard() {
+  const c = S.contact, lines = ["BEGIN:VCARD", "VERSION:3.0", `N:;${plain(c.name)};;;`, `FN:${plain(c.name)}`];
+  if (c.org) lines.push(`ORG:${plain(c.org)}`);
+  if (c.phone) lines.push(`TEL;TYPE=CELL:${plain(c.phone)}`);
+  if (c.email) lines.push(`EMAIL:${plain(c.email)}`);
+  if (c.social) lines.push(`URL:${plain(c.social)}`);
+  lines.push("END:VCARD");
+  return lines.join("\n");
+}
+function showQR(kind, text) {
+  if (typeof QRCode === "undefined") { toast("Il generatore di QR non si è caricato (serve la rete)."); return; }
+  const isMsg = kind === "messaggio" && text.trim();
+  const host = openSheet(`<h2>${isMsg ? "Messaggio" : "Contatto di " + esc(S.contact.name)}</h2>
+    <div class="qr-wrap"><div id="qrBox"></div><div class="qr-cap">${isMsg ? esc(text) : "Inquadra con la fotocamera: il contatto finisce nella tua rubrica."}</div></div>
+    <button type="button" class="pill" id="qrClose">Chiudi</button>`);
+  new QRCode(host.querySelector("#qrBox"), { text: isMsg ? plain(text) : vcard(), width: 440, height: 440, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  host.querySelector("#qrClose").onclick = closeSheet;
+  sfx.qr();
+}
+
+/* ------------------------------------------------------------------ sheets (menu, key) */
+function openSheet(html) {
+  closeSheet();
+  const h = $("sheetHost");
+  h.innerHTML = `<div class="backdrop" id="bd"></div><section class="sheet" role="dialog" aria-modal="true">${html}</section>`;
+  $("bd").onclick = closeSheet;
+  return h.querySelector(".sheet");
+}
+function closeSheet() { $("sheetHost").innerHTML = ""; }
+function openKeySheet() {
+  const sh = openSheet(`<h2>Chiave API di Claude</h2>
+    <p class="note">Crea una chiave su console.anthropic.com → API Keys e incollala qui. Resta salvata solo su questo telefono e va direttamente ad Anthropic.</p>
+    <div class="field"><label for="keyIn">Chiave</label><input id="keyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" value=""></div>
+    <div class="note" id="keyState">${apiKey() ? "Una chiave è già salvata: incollane una nuova per sostituirla." : "Nessuna chiave salvata."}</div>
+    <div class="grid2"><button type="button" class="pill" id="keyClose">Chiudi</button><button type="button" class="pill go" id="keySave">Salva e prova</button></div>
+    ${apiKey() ? '<button type="button" class="pill" id="keyDel">Cancella la chiave da questo telefono</button>' : ""}`);
+  sh.querySelector("#keyClose").onclick = closeSheet;
+  const del = sh.querySelector("#keyDel");
+  if (del) del.onclick = () => { store.set("key", ""); brainDot("bad"); closeSheet(); toast("Chiave cancellata."); };
+  sh.querySelector("#keySave").onclick = async () => {
+    const v = sh.querySelector("#keyIn").value.trim();
+    if (!v) return;
+    const st = sh.querySelector("#keyState"); st.textContent = "Provo la chiave…";
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/models?limit=1", { headers: { "x-api-key": v, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" } });
+      if (r.status === 401) { st.textContent = "Chiave non valida: controlla di averla copiata tutta."; sfx.error(); return; }
+      if (!r.ok) { st.textContent = "Anthropic risponde con errore " + r.status + ": la salvo comunque."; }
+      store.set("key", v); brainDot("ok"); sfx.reply(); closeSheet(); say("Chiave ricevuta. Cervello collegato, capo.");
+    } catch (e) { st.textContent = "Non riesco a raggiungere Anthropic: controlla la rete."; sfx.error(); }
+  };
+}
+function openMenu() {
+  sfx.tap();
+  const convo = store.get("convo", false), fast = store.get("model", "smart") === "fast";
+  const sh = openSheet(`<h2>Protocolli</h2>
+    <div class="grid2">
+      <button type="button" class="act" data-a="intro">Presentati<small>FRIDAY saluta chi hai davanti</small></button>
+      <button type="button" class="act" data-a="qr">Il mio contatto<small>QR da inquadrare</small></button>
+      <button type="button" class="act" data-a="scan">Scansione<small>fotocamera con mirino</small></button>
+      <button type="button" class="act" data-a="stark">Modalità Stark<small>una battuta da Tony</small></button>
+      <button type="button" class="act" data-a="type">Scrivi<small>se non puoi parlare</small></button>
+      <button type="button" class="act" data-a="new">Nuova conversazione<small>pulisce la memoria breve</small></button>
+    </div>
+    <h2>App</h2>
+    <div class="grid3">
+      <button type="button" class="act" data-a="meteo">Meteo<small>qui e ora</small></button>
+      <button type="button" class="act" data-a="pos">Posizione<small>dove sei</small></button>
+      <button type="button" class="act" data-a="notes">Note<small>${notes().length} salvate</small></button>
+      <button type="button" class="act" data-a="sys">Diagnostica<small>il telefono</small></button>
+      <button type="button" class="act" data-a="compass">Bussola<small>orientamento</small></button>
+      <button type="button" class="act" data-a="sleep">Riposo<small>si ritira nell'angolo</small></button>
+    </div>
+    <h2>Ascolto e cervello</h2>
+    <div class="grid2">
+      <button type="button" class="act" data-a="wake">${store.get("wake", true) ? "Nome: attivo" : "Nome: spento"}<small>${store.get("wake", true) ? "si sveglia quando dici Friday" : "tocchi il cerchio per parlare"}</small></button>
+      <button type="button" class="act" data-a="convo">${convo ? "Conversazione: attiva" : "Conversazione: spenta"}<small>${convo ? "dopo ogni risposta ti riascolta" : "risponde e aspetta il nome"}</small></button>
+      <button type="button" class="act" data-a="nap">${["Riposo: mai", "Riposo: dopo 1 min", "Riposo: dopo 3 min"][[0, 1, 3].indexOf(store.get("sleepAfter", 1))] || "Riposo: dopo 1 min"}<small>senza attività</small></button>
+      <button type="button" class="act" data-a="model">${fast ? "Cervello: veloce" : "Cervello: completo"}<small>${fast ? "Haiku, risposte lampo" : "Sonnet, più sveglia"}</small></button>
+      <button type="button" class="act" data-a="key">Chiave API<small>${apiKey() ? "salvata su questo telefono" : "da inserire"}</small></button>
+      <button type="button" class="act" data-a="mute">${store.get("mute", false) ? "Riattiva la voce" : "Solo testo"}<small>${store.get("mute", false) ? "ora è muta" : "niente audio"}</small></button>
+    </div>
+    <h2>Voce</h2>
+    <div class="field"><label for="vsel">Voce italiana del telefono</label><select id="vsel"></select></div>
+    <button type="button" class="act" data-a="test">Prova voce<small>una frase di esempio</small></button>
+    <h2>Biglietto da visita</h2>
+    <div class="grid2">
+      <div class="field"><label for="cName">Nome</label><input id="cName" value="${esc(S.contact.name)}"></div>
+      <div class="field"><label for="cOrg">Azienda</label><input id="cOrg" value="${esc(S.contact.org)}"></div>
+      <div class="field"><label for="cMail">Email</label><input id="cMail" type="email" value="${esc(S.contact.email)}"></div>
+      <div class="field"><label for="cTel">Telefono</label><input id="cTel" type="tel" value="${esc(S.contact.phone)}"></div>
+    </div>
+    <div class="field"><label for="cSoc">Link (Instagram, sito)</label><input id="cSoc" value="${esc(S.contact.social)}"></div>
+    <button type="button" class="pill" id="menuClose">Chiudi</button>`);
+  const sel = sh.querySelector("#vsel"), it = voices();
+  sel.innerHTML = `<option value="">Automatica${S.voice ? " (" + esc(S.voice.name) + ")" : ""}</option>` + it.map((v) => `<option value="${esc(v.name)}">${esc(v.name)}${v.localService ? "" : " · online"}</option>`).join("");
+  sel.value = store.get("voice", "");
+  sel.onchange = () => { store.set("voice", sel.value); pickVoice(); };
+  ["cName", "cOrg", "cMail", "cTel", "cSoc"].forEach((id) => { sh.querySelector("#" + id).oninput = () => {
+    S.contact = { name: $("cName").value || "Matteo", org: $("cOrg").value, email: $("cMail").value, phone: $("cTel").value, social: $("cSoc").value };
+    store.set("contact", S.contact); }; });
+  sh.querySelector("#menuClose").onclick = closeSheet;
+  sh.querySelectorAll("[data-a]").forEach((b) => b.onclick = () => {
+    const a = b.dataset.a; sfx.tap();
+    if (a === "test") { hush(); tpReset(); say("Buonasera capo, questa è la voce che userò stasera. Tutti i sistemi sono operativi."); return; }
+    if (a === "mute") { store.set("mute", !store.get("mute", false)); openMenu(); return; }
+    if (a === "convo") { store.set("convo", !store.get("convo", false)); openMenu(); return; }
+    if (a === "wake") { store.set("wake", !store.get("wake", true)); if (!store.get("wake", true)) stopRec(); openMenu(); return; }
+    if (a === "nap") { const v = store.get("sleepAfter", 1); store.set("sleepAfter", v === 1 ? 3 : v === 3 ? 0 : 1); bumpIdle(); openMenu(); return; }
+    if (a === "model") { store.set("model", store.get("model", "smart") === "fast" ? "smart" : "fast"); openMenu(); return; }
+    if (a === "key") { openKeySheet(); return; }
+    closeSheet();
+    if (a === "qr") showQR("contatto", "");
+    else if (a === "scan") openCamera();
+    else if (a === "type") openInput();
+    else if (a === "meteo") appMeteo("").catch((e) => toast("Meteo: " + e.message));
+    else if (a === "pos") appPosizione().catch((e) => toast("Posizione: " + e.message));
+    else if (a === "notes") renderNotes();
+    else if (a === "sys") appSistema();
+    else if (a === "compass") appBussola();
+    else if (a === "sleep") goSleep(true);
+    else if (a === "new") { S.turns = []; store.set("turns", []); tpReset(); $("youSaid").textContent = ""; say("Memoria breve azzerata, capo."); }
+    else if (a === "intro") ask("Presentati in due frasi alla persona che ho davanti: chi sei, cosa sai fare stasera, con un tocco di stile Stark. Parla a lei, non a me.", { label: "Protocollo: presentazione" });
+    else if (a === "stark") ask("Dimmi una battuta alla Tony Stark adatta a stasera, di una frase, che posso ripetere io.", { label: "Modalità Stark" });
+  });
+}
+
+/* ------------------------------------------------------------------ typing fallback */
+let autoT = null;
+function openInput() {
+  sfx.listen(); hush();
+  $("inputBar").hidden = false; setPhase("listen", "Scrivi");
+  const el = $("say"); el.value = ""; el.focus();
+}
+function closeInput() { $("inputBar").hidden = true; $("say").blur(); if (S.phase === "listen") setPhase("idle"); }
+function submitSay() {
+  clearTimeout(autoT);
+  const v = $("say").value.trim(); if (!v) return;
+  sfx.send(); closeInput(); ask(v);
+}
+
+/* ------------------------------------------------------------------ controls */
+$("say").addEventListener("input", () => {
+  S.typing = Math.min(1, S.typing + 0.35);
+  clearTimeout(autoT);
+  if ($("autoSend").checked && $("say").value.trim().length > 2) autoT = setTimeout(submitSay, 2200);
+});
+$("sayForm").addEventListener("submit", (e) => { e.preventDefault(); submitSay(); });
+$("closeInput").onclick = () => { sfx.tap(); clearTimeout(autoT); closeInput(); };
+$("micBtn").onclick = () => { if (!S.booted) return; S.wakeBlocked = false; if (S.sleeping) { wakeUp(); setTimeout(() => listen(), 700); } else listen(); };
+$("menuBtn").onclick = () => { if (S.booted) { bumpIdle(); openMenu(); } };
+$("scanBtn").onclick = () => { if (!S.booted) return; audio(); sfx.tap(); openCamera(); };
+$("camClose").onclick = () => { sfx.tap(); closeCamera(); setTimeout(startWake, 400); };
+$("camShot").onclick = () => { const d = grabFrame(); closeCamera(); analyze(d); };
+$("shot").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { analyze(await fileToJpeg(f)); } catch (err) { toast("Questa foto non riesco a leggerla."); }
+});
+$("reactor").addEventListener("click", (e) => {
+  if (!S.booted) return;
+  S.wakeBlocked = false;
+  if (S.sleeping) { wakeUp(); setTimeout(() => listen({ greet: true }), 700); return; }
+  if (rec && recMode === "cmd") { try { rec.stop(); } catch (er) { /* ok */ } return; }
+  if (speaking || S.busy) { hush(); if (S.ctl) S.ctl.abort(); S.ctl = null; S.busy = false; setPhase("idle"); renderSaid(); setTimeout(startWake, 400); }
+  else listen();
+});
+["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => { if (S.booted && !S.sleeping) bumpIdle(); }, { passive: true }));
+
+/* ------------------------------------------------------------------ boot */
+function bootLog(lines) {
+  const el = $("bootLog"); el.textContent = "";
+  lines.forEach(([k, v], i) => setTimeout(() => { el.innerHTML += `${esc(k.padEnd(16, "."))} <b>${esc(v)}</b>\n`; sfx.tap(); }, 300 + i * 360));
+}
+function motion() {
+  // tilt the phone and the hologram follows; shake it to wake FRIDAY up
+  let lastShake = 0;
+  window.addEventListener("deviceorientation", (e) => {
+    if (e.beta == null) return;
+    S.txT = Math.max(-0.3, Math.min(0.3, (e.beta - 55) * 0.006)); S.tyT = Math.max(-0.3, Math.min(0.3, (e.gamma || 0) * 0.007));
+  });
+  window.addEventListener("devicemotion", (e) => {
+    const a = e.acceleration || {}; const m = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+    if (m > 16 && Date.now() - lastShake > 2500 && S.booted) {
+      lastShake = Date.now();
+      if (S.sleeping) { wakeUp(); setTimeout(() => listen({ greet: true }), 700); }
+    }
+  });
+}
+async function boot() {
+  try {  // iOS asks for motion access only from a tap: this is the tap
+    if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission().then((r) => { if (r === "granted") motion(); }).catch(() => {});
+    else motion();
+  } catch (e) { /* no motion */ }
+  audio(); sfx.boot();
+  if (window.speechSynthesis) { try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* ok */ } }
+  try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request("screen"); } catch (e) { /* screen may sleep */ }
+  $("tapStart").hidden = true; bootT = performance.now(); asm = 1;
+  bootLog([["NUCLEO", "OK"], ["RETE", navigator.onLine ? "ONLINE" : "OFFLINE"], ["CERVELLO", apiKey() ? "CLAUDE" : "CHIAVE ASSENTE"],
+    ["ASCOLTO", SR ? "NOME + MICROFONO" : "TASTIERA"], ["VOCE", S.voice ? S.voice.name.toUpperCase().slice(0, 14) : "IT"], ["FINESTRE", "PRONTE"], ["PROTOCOLLO", "HALLOWEEN"]]);
+  setTimeout(() => { $("bootTitle").style.opacity = 1; }, 1500);
+  setTimeout(() => {
+    $("bootLayer").hidden = true; app.classList.remove("boot"); S.booted = true; setPhase("idle");
+    const h = new Date().getHours(), hi = h < 13 && h >= 5 ? "Buongiorno" : h < 18 && h >= 13 ? "Buon pomeriggio" : "Buonasera";
+    TP.final = null;
+    if (apiKey()) say(`${hi} capo. FRIDAY è online, tutti i sistemi sono operativi.${SR && store.get("wake", true) ? " Chiamami per nome quando ti servo." : ""}`);
+    else { say(`${hi} capo. Mi manca solo la chiave del cervello.`); openKeySheet(); }
+    bumpIdle();
+  }, 3700);
+}
+$("tapStart").onclick = boot;
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && S.booted) {
+    if (navigator.wakeLock) { try { S.wake = await navigator.wakeLock.request("screen"); } catch (e) { /* ok */ } }
+    setTimeout(startWake, 600);
+  }
+  if (document.visibilityState === "hidden") { stopRec(); if (camStream) closeCamera(); }
+});
+
+brainDot(apiKey() ? "ok" : "bad");
+if (!SR) $("sysLine").textContent = "Ascolto da tastiera";
+window.addEventListener("resize", layout);
+layout(); tick(); setInterval(tick, 1000);
+requestAnimationFrame(frame);
+renderSaid();
+
+})();
+</script>
+</body>
+</html>
