@@ -190,13 +190,18 @@ body {
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .grid3 .act { padding: 10px; font-size: 13px; }
 
-/* asleep: the screen goes quiet, only the clock and the small reactor in the corner */
-.corner, .menu-btn, #subs, #state { transition: opacity .9s ease, transform .9s ease; }
-.asleep .tr, .asleep .br, .asleep .menu-btn, .asleep #subs { opacity: 0; pointer-events: none; }
-.asleep .tl { opacity: .55; }
-.asleep #state { opacity: .8; top: auto !important; bottom: calc(30px + env(safe-area-inset-bottom, 0px)); left: 96px; transform: none; color: var(--dim); }
-.asleep .bl .clabel { opacity: 0; }
-.asleep .bl .cbtn { border-color: transparent; background: transparent; box-shadow: none; }
+/* asleep: everything around the reactor leaves the screen, each piece towards its own edge */
+.corner, .menu-btn, #subs, #state, .scan-lines { transition: opacity .7s ease, transform .9s cubic-bezier(.6,0,.3,1); }
+.asleep .corner, .asleep .menu-btn, .asleep #subs { opacity: 0; pointer-events: none; }
+.asleep .tl { transform: translate(-28px, -28px); transition-delay: 0s; }
+.asleep .tr { transform: translate(28px, -28px); transition-delay: .08s; }
+.asleep .bl { transform: translate(-28px, 28px); transition-delay: .16s; }
+.asleep .br { transform: translate(28px, 28px); transition-delay: .24s; }
+.asleep .menu-btn { transform: translate(-50%, 30px); transition-delay: .2s; }
+.asleep #subs { transform: translateY(16px); }
+.asleep .scan-lines { opacity: .12; }
+.asleep #state { color: var(--dim); opacity: .55; letter-spacing: .4em; transition-delay: 1.4s; }
+
 
 /* windows */
 #winLayer { position: absolute; inset: 0; pointer-events: none; z-index: 14; }
@@ -412,8 +417,9 @@ const sfx = {
 };
 
 /* ------------------------------------------------------------------ reactor (canvas, pseudo-3D) */
-// Every ring is a circle in 3D. Awake (asm = 1) they sit flat and centred; asleep (asm = 0) they come
-// apart, tumble slowly, and the whole reactor drifts to the bottom-left corner looking down.
+// Awake, the rings lie flat, stacked into one reactor. When FRIDAY rests the reactor stays in the
+// centre: the core drains, the whole thing tips back and the rings slide apart along its axis, layer
+// by layer, like an exploded technical drawing that floats and slowly turns. Waking reverses it.
 const cv = $("reactor"), cx2 = cv.getContext("2d");
 let W = 0, H = 0, DPR = 1, CX = 0, CY = 0, R = 0;
 function layout() {
@@ -427,36 +433,43 @@ function layout() {
   $("card").style.top = (CY - R * 1.2) + "px";
 }
 const COLORS = { idle: [255, 173, 51], listen: [97, 226, 255], think: [255, 173, 51], speak: [255, 173, 51], scan: [255, 90, 79],
-  error: [255, 90, 79], sleep: [255, 150, 40] };
-let col = [255, 173, 51], bootT = -1, asm = 0, lastNow = 0;
+  error: [255, 90, 79], sleep: [255, 128, 34] };
+let col = [255, 173, 51], bootT = -1, lastNow = 0;
 const BARS = Array.from(document.querySelectorAll("#micBtn .bars i"));
-// ring layout and how each one flies apart when FRIDAY sleeps
-const PARTS = {
-  ticks: { rx: 1.1, ry: -0.5, z: 1.4 }, segs: { rx: -0.7, ry: 0.9, z: 0.7 }, thin: { rx: 0.5, ry: 1.2, z: 0.25 },
-  coils: { rx: -1.2, ry: -0.6, z: -0.35 }, edge: { rx: -1.2, ry: -0.6, z: -0.2 }, inner: { rx: 0.9, ry: -1.1, z: -0.9 },
+// each layer: its height along the reactor's axis when exploded (in R), how far it opens out, and
+// when it starts to move (layers leave one after the other, the outer ones first)
+const LAYERS = {
+  ticks: { h: 1.15, open: 0.06, d: 0.00 },
+  segs: { h: 0.72, open: 0.10, d: 0.08 },
+  thin: { h: 0.42, open: 0.02, d: 0.14 },
+  edge: { h: 0.06, open: 0.16, d: 0.22 },
+  coils: { h: -0.06, open: 0.20, d: 0.22 },
+  inner: { h: -0.48, open: 0.04, d: 0.30 },
+  core: { h: -0.86, open: 0, d: 0.36 },
 };
-let V = { ox: 0, oy: 0, sc: 1, gx: 0, gy: 0, t: 0, s: 1 };  // view for this frame
-function xf(part) {
-  const k = 1 - asm, p = PARTS[part], tum = V.t * 0.35;
-  return { ax: p.rx * k * 1.15 + Math.sin(tum + p.z * 3) * 0.25 * k, ay: p.ry * k * 1.15 + Math.cos(tum * 0.8 + p.rx) * 0.25 * k,
-    z: p.z * k * R * 1.1 };
+let V = { ox: 0, oy: 0, sc: 1, gx: 0, gy: 0, t: 0 };
+// rest tween: kRest goes 0 -> 1 when FRIDAY rests, 1 -> 0 when she wakes (ease in-out, staggered per layer)
+let kRest = 0, kFrom = 0, tw0 = 0, lastSleep = false;
+const easeIO = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+function layerK(name) {
+  // outer layers leave first; waking plays it backwards, so the core comes back first
+  const d = LAYERS[name].d, span = 0.62;
+  return easeIO(clamp01((kRest - d) / span));
 }
-function proj(x, y, T) {
-  // ring's own tilt
-  let cy = Math.cos(T.ax), sy = Math.sin(T.ax), y1 = y * cy, z1 = y * sy;
-  let cyy = Math.cos(T.ay), syy = Math.sin(T.ay), x2 = x * cyy + z1 * syy, z2 = -x * syy + z1 * cyy;
-  z2 += T.z;
-  // whole reactor looking down-left while asleep
-  const cgx = Math.cos(V.gx), sgx = Math.sin(V.gx), y3 = y1 * cgx - z2 * sgx, z3 = y1 * sgx + z2 * cgx;
-  const cgy = Math.cos(V.gy), sgy = Math.sin(V.gy), x4 = x2 * cgy + z3 * sgy, z4 = -x2 * sgy + z3 * cgy;
-  const f = 700, s = f / (f + z4);
+function proj(x, y, z) {
+  const cgx = Math.cos(V.gx), sgx = Math.sin(V.gx), y3 = y * cgx - z * sgx, z3 = y * sgx + z * cgx;
+  const cgy = Math.cos(V.gy), sgy = Math.sin(V.gy), x4 = x * cgy + z3 * sgy, z4 = -x * sgy + z3 * cgy;
+  const f = 760, s = f / (f + z4);
   return [V.ox + x4 * s * V.sc, V.oy + y3 * s * V.sc, s];
 }
-function arc3(part, r, a0, a1, w, alpha) {
-  const T = xf(part), n = Math.max(6, Math.ceil(Math.abs(a1 - a0) / (Math.PI * 2) * 72));
+function layerZ(name) { return LAYERS[name].h * R * 0.62 * layerK(name); }
+function layerR(name, r) { return r * (1 + LAYERS[name].open * layerK(name)); }
+function arc3(name, r, a0, a1, w, alpha) {
+  const z = layerZ(name), rr = layerR(name, r), n = Math.max(6, Math.ceil(Math.abs(a1 - a0) / (Math.PI * 2) * 80));
   cx2.beginPath(); let ss = 0;
   for (let i = 0; i <= n; i++) {
-    const a = a0 + (a1 - a0) * (i / n), [x, y, s] = proj(Math.cos(a) * r, Math.sin(a) * r, T);
+    const a = a0 + (a1 - a0) * (i / n), [x, y, s] = proj(Math.cos(a) * rr, Math.sin(a) * rr, z);
     i ? cx2.lineTo(x, y) : cx2.moveTo(x, y); ss += s;
   }
   cx2.lineWidth = Math.max(0.6, w * V.sc * (ss / (n + 1)));
@@ -464,51 +477,64 @@ function arc3(part, r, a0, a1, w, alpha) {
 }
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - (lastNow || now)) / 1000); lastNow = now;
+  lastNow = now;
   const t = now / 1000; V.t = t;
-  const want = COLORS[S.phase] || COLORS.idle;
-  col = col.map((v, i) => v + (want[i] - v) * 0.08);
-  // assembly: boot builds it, sleep takes it apart
+  const want = COLORS[S.sleeping ? "sleep" : S.phase] || COLORS.idle;
+  col = col.map((v, i) => v + (want[i] - v) * 0.06);
+  // the rest tween
+  if (S.sleeping !== lastSleep) { lastSleep = S.sleeping; kFrom = kRest; tw0 = now; }
+  const dur = S.sleeping ? 2600 : 1500;
+  kRest = kFrom + ((S.sleeping ? 1 : 0) - kFrom) * easeIO(clamp01((now - tw0) / dur));
+  const k = easeIO(clamp01(kRest));
   const bp = bootT < 0 ? (S.booted ? 1 : 0) : Math.min(1, (now - bootT) / 2600);
-  const asmTarget = S.sleeping ? 0 : (S.booted || bootT >= 0 ? 1 : 0.0001);
-  asm += (asmTarget - asm) * Math.min(1, dt * (S.sleeping ? 1.4 : 2.6));
-  if (!S.booted && bootT < 0) asm = 1;   // the tap screen shows the reactor dimly assembled
   // level: speech envelope or ambient breathing
   if (S.phase === "speak") S.target = Math.max(S.target * 0.93, 0.25 + 0.2 * Math.sin(t * 9) * Math.sin(t * 3.7));
   else if (S.phase === "listen") S.target = 0.18 + Math.min(0.6, S.typing) + 0.05 * Math.sin(t * 4);
   else if (S.phase === "think") S.target = 0.3 + 0.15 * Math.sin(t * 6);
-  else if (S.sleeping) S.target = 0.08 + 0.06 * Math.sin(t * 1.1);
+  else if (S.sleeping) S.target = 0.05 + 0.04 * Math.sin(t * 0.9);
   else S.target = 0.12 + 0.05 * Math.sin(t * 1.4);
   S.typing *= 0.9;
   S.level += (S.target - S.level) * 0.18;
-  const L = S.level, k = 1 - asm;
-  // where the reactor sits: centre when awake, bottom-left corner when asleep
-  const sx = 64 + (window.visualViewport ? 0 : 0), sy = H - 150;
-  V.ox = CX + (sx - CX) * k; V.oy = CY + (sy - CY) * k;
+  const L = S.level;
+  // stays in the centre; resting it tips back, turns a little and floats
   S.tx += ((S.txT || 0) - S.tx) * 0.08; S.ty += ((S.tyT || 0) - S.ty) * 0.08;   // the phone's tilt moves the hologram
-  V.sc = 1 - 0.62 * k; V.gx = 0.55 * k + S.tx; V.gy = -0.7 * k + S.ty;
+  V.ox = CX; V.oy = CY + Math.sin(t * 0.8) * 5 * k;
+  V.sc = 1 - 0.14 * k;
+  V.gx = 1.02 * k + S.tx; V.gy = (-0.32 + Math.sin(t * 0.25) * 0.18) * k + S.ty;
   cx2.setTransform(DPR, 0, 0, DPR, 0, 0);
   cx2.clearRect(0, 0, W, H);
   const stage = (a, b) => Math.max(0, Math.min(1, (bp - a) / (b - a)));
   const ease = (x) => 1 - Math.pow(1 - x, 3);
-  const spin = S.phase === "think" ? 2.6 : S.phase === "scan" ? 3.4 : S.sleeping ? 0.4 : 1;
+  const spin = S.phase === "think" ? 2.6 : S.phase === "scan" ? 3.4 : 1 - 0.55 * k;
   const dim = S.booted || bootT >= 0 ? 1 : 0.25;
+  const fade = 1 - 0.3 * k;   // rings a bit fainter at rest
   // halo
   const hr = R * 1.9 * V.sc;
   const g = cx2.createRadialGradient(V.ox, V.oy, R * 0.1 * V.sc, V.ox, V.oy, hr);
-  g.addColorStop(0, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${(0.12 + L * 0.25 * stage(0.55, 0.8)) * dim})`);
+  g.addColorStop(0, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${(0.12 + L * 0.25 * stage(0.55, 0.8)) * dim * (1 - 0.55 * k)})`);
   g.addColorStop(1, "rgba(0,0,0,0)");
   cx2.fillStyle = g; cx2.fillRect(0, 0, W, H);
   cx2.globalAlpha = dim;
+  // the axis the layers slide along, visible only while apart
+  if (k > 0.02) {
+    const [x0, y0] = proj(0, 0, LAYERS.ticks.h * R * 0.62 * k * 1.12), [x1, y1] = proj(0, 0, LAYERS.core.h * R * 0.62 * k * 1.15);
+    cx2.save(); cx2.setLineDash([3, 5]); cx2.lineDashOffset = -t * 12;
+    cx2.beginPath(); cx2.moveTo(x0, y0); cx2.lineTo(x1, y1);
+    cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${0.45 * k})`; cx2.lineWidth = 1; cx2.stroke(); cx2.restore();
+    // a small marker where each layer sits on the axis
+    ["ticks", "segs", "edge", "inner"].forEach((n) => {
+      const [mx, my] = proj(0, 0, layerZ(n)); cx2.beginPath(); cx2.arc(mx, my, 2.2, 0, Math.PI * 2);
+      cx2.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${0.6 * k})`; cx2.fill(); });
+  }
   // 1. outer tick ring
   const s1 = ease(stage(0, 0.35));
   if (s1 > 0) {
-    const n = 96, rot = t * 0.05 * spin, T = xf("ticks");
+    const n = 96, rot = t * 0.05 * spin, z = layerZ("ticks");
     for (let i = 0; i < n * s1; i++) {
-      const a = rot + (i / n) * Math.PI * 2, long = i % 8 === 0, r0 = R * 1.18, r1 = R * (long ? 1.27 : 1.22);
-      const [x0, y0] = proj(Math.cos(a) * r0, Math.sin(a) * r0, T), [x1, y1] = proj(Math.cos(a) * r1, Math.sin(a) * r1, T);
+      const a = rot + (i / n) * Math.PI * 2, long = i % 8 === 0, r0 = layerR("ticks", R * 1.18), r1 = layerR("ticks", R * (long ? 1.27 : 1.22));
+      const [x0, y0] = proj(Math.cos(a) * r0, Math.sin(a) * r0, z), [x1, y1] = proj(Math.cos(a) * r1, Math.sin(a) * r1, z);
       cx2.beginPath(); cx2.moveTo(x0, y0); cx2.lineTo(x1, y1);
-      cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${long ? 0.7 : 0.28})`; cx2.lineWidth = long ? 1.6 : 1; cx2.stroke();
+      cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${(long ? 0.7 : 0.28) * fade})`; cx2.lineWidth = long ? 1.6 : 1; cx2.stroke();
     }
   }
   // 2. segmented ring, counter-rotating
@@ -517,48 +543,50 @@ function frame(now) {
     const segs = 6, rot = -t * 0.22 * spin;
     for (let i = 0; i < segs; i++) {
       const a0 = rot + (i / segs) * Math.PI * 2, span = (Math.PI * 2 / segs) * 0.72 * s2;
-      arc3("segs", R * 1.05, a0, a0 + span, 3, 0.55 + L * 0.4);
+      arc3("segs", R * 1.05, a0, a0 + span, 3, (0.55 + L * 0.4) * fade);
     }
-    arc3("thin", R * 0.98, 0, Math.PI * 2 * s2, 1, 0.25);
+    arc3("thin", R * 0.98, 0, Math.PI * 2 * s2, 1, 0.25 * fade);
   }
-  // 3. reactor coils
+  // 3. reactor coils (they open out a little when the reactor comes apart)
   const s3 = ease(stage(0.38, 0.75));
   if (s3 > 0) {
     const coils = 10, rot = t * 0.12 * spin;
     for (let i = 0; i < coils; i++) {
       const a = rot + (i / coils) * Math.PI * 2, span = (Math.PI * 2 / coils) * 0.62;
-      arc3("coils", R * 0.72, a, a + span * s3, R * 0.16, 0.16 + L * 0.35);
-      arc3("edge", R * 0.82, a, a + span * s3, 1.2, 0.6);
+      arc3("coils", R * 0.72, a, a + span * s3, R * 0.16, (0.16 + L * 0.35) * fade);
+      arc3("edge", R * 0.82, a, a + span * s3, 1.2, 0.6 * fade);
     }
-    arc3("inner", R * 0.6, 0, Math.PI * 2 * s3, 1.4, 0.55);
+    arc3("inner", R * 0.6, 0, Math.PI * 2 * s3, 1.4, 0.55 * fade);
   }
-  // 4. core
+  // 4. core: drains to an ember when resting
   const s4 = ease(stage(0.6, 1));
   if (s4 > 0) {
-    const cr = R * V.sc * (0.36 + L * 0.12) * s4 * (1 - 0.25 * k);
-    const cg = cx2.createRadialGradient(V.ox, V.oy, 0, V.ox, V.oy, cr * 1.6);
-    cg.addColorStop(0, `rgba(255,255,255,${0.9 * s4 * (1 - 0.4 * k)})`);
+    const [cxp, cyp] = proj(0, 0, layerZ("core"));
+    const drain = 1 - 0.55 * layerK("core");
+    const cr = R * V.sc * (0.36 + L * 0.12) * s4 * drain;
+    const cg = cx2.createRadialGradient(cxp, cyp, 0, cxp, cyp, cr * 1.6);
+    cg.addColorStop(0, `rgba(255,255,255,${0.9 * s4 * (1 - 0.6 * k)})`);
     cg.addColorStop(0.35, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${0.85 * s4})`);
     cg.addColorStop(1, `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},0)`);
-    cx2.fillStyle = cg; cx2.beginPath(); cx2.arc(V.ox, V.oy, cr * 1.6, 0, Math.PI * 2); cx2.fill();
-    cx2.beginPath(); cx2.arc(V.ox, V.oy, cr, 0, Math.PI * 2); cx2.lineWidth = 2;
-    cx2.strokeStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},.9)`; cx2.stroke();
+    cx2.fillStyle = cg; cx2.beginPath(); cx2.arc(cxp, cyp, cr * 1.6, 0, Math.PI * 2); cx2.fill();
+    // the core ring is drawn as a circle in the reactor's plane, so it tips with the rest
+    arc3("core", R * (0.36 + L * 0.12) * s4 * drain, 0, Math.PI * 2, 2, 0.9);
   }
   // thinking: orbiting sparks; scan: sweep
-  if (S.phase === "think" && !S.sleeping) {
+  if (S.phase === "think" && k < 0.05) {
     for (let i = 0; i < 3; i++) {
       const a = t * 2.4 + i * 2.094, r = R * 0.92 * V.sc;
       cx2.beginPath(); cx2.arc(V.ox + Math.cos(a) * r, V.oy + Math.sin(a) * r, 3, 0, Math.PI * 2);
       cx2.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},.95)`; cx2.fill();
     }
   }
-  if (S.phase === "scan" && cx2.createConicGradient && !S.sleeping) {
+  if (S.phase === "scan" && cx2.createConicGradient && k < 0.05) {
     const sw = cx2.createConicGradient(t * 3, V.ox, V.oy);
     sw.addColorStop(0, "rgba(255,90,79,.35)"); sw.addColorStop(0.12, "rgba(255,90,79,0)"); sw.addColorStop(1, "rgba(255,90,79,0)");
     cx2.fillStyle = sw; cx2.beginPath(); cx2.arc(V.ox, V.oy, R * 1.3 * V.sc, 0, Math.PI * 2); cx2.fill();
   }
   // speaking / listening: waveform ring
-  if ((S.phase === "speak" || S.phase === "listen") && !S.sleeping) {
+  if ((S.phase === "speak" || S.phase === "listen") && k < 0.05) {
     cx2.beginPath();
     const n = 90;
     for (let i = 0; i <= n; i++) {
@@ -1441,7 +1469,7 @@ async function boot() {
   audio(); sfx.boot();
   if (window.speechSynthesis) { try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* ok */ } }
   try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request("screen"); } catch (e) { /* screen may sleep */ }
-  $("tapStart").hidden = true; bootT = performance.now(); asm = 1;
+  $("tapStart").hidden = true; bootT = performance.now();
   bootLog([["NUCLEO", "OK"], ["RETE", navigator.onLine ? "ONLINE" : "OFFLINE"], ["CERVELLO", apiKey() ? "CLAUDE" : "CHIAVE ASSENTE"],
     ["ASCOLTO", SR ? "NOME + MICROFONO" : "TASTIERA"], ["VOCE", S.voice ? S.voice.name.toUpperCase().slice(0, 14) : "IT"], ["FINESTRE", "PRONTE"], ["PROTOCOLLO", "HALLOWEEN"]]);
   setTimeout(() => { $("bootTitle").style.opacity = 1; }, 1500);
